@@ -1,0 +1,267 @@
+#!/bin/sh
+
+################################################################################
+### MNEMONICS (ASM INSTRUCTIONS)
+###   the "standard" x86 intel instruction mnemonics (yes, intel syntax, no
+###   gas)
+###
+###   these will eventually go into a separate file, divided by architecture
+################################################################################
+instr_nop() {
+	args 0 || return 1
+	assemble 90
+}
+
+instr_xchg() {
+	args 2 || return 1
+	case "$2" in
+		eax) assemble $(hexadd 90 $(eval echo \$$1)) ;;
+		$reg32)
+			case "$1" in
+				eax) assemble $(hexadd 90 $(eval echo \$$2)) ;;
+				$reg32) assemble 87 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		ax) assemble 66 $(hexadd 90 $(eval echo \$$1)) ;;
+		$reg16)
+			case "$1" in
+				ax) assemble 66 $(hexadd 90 $(eval echo \$$2)) ;;
+				$reg16) assemble 66 87 $(hexadd "c0" $(hexmult 8 $(eval echo \$$1)) $(eval echo \$$2)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		$reg8)
+			case "$1" in
+				$reg8) assemble 86 $(hexadd "c0" $(hexmult 8 $(eval echo \$$1)) $(eval echo \$$2)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		*) return 1 ;;
+	esac
+}
+
+instr_push() {
+	case "$1" in
+		byte)
+			shift
+			assemble 68 $(endian $(num "$1"))
+			return 0
+			;;
+	esac
+
+	args 1 || return 1
+	case "$1" in
+		es) assemble 06 ;;
+		cs) assemble 0e ;;
+		ss) assemble 16 ;;
+		ds) assemble 1e ;;
+
+		$reg32) assemble $(hexadd "50" $(eval echo \$$1)) ;;
+		$reg16) assemble 66 $(hexadd "50" $(eval echo \$$1)) ;;
+		$reg8) return 1 ;;
+		*) assemble 68 $(endian $(num "$1")) ;;
+	esac
+}
+
+instr_pop() {
+	args 1 || return 1
+	case "$1" in
+		es) assemble 06 ;;
+		cs) assemble 0e ;;
+		ss) assemble 16 ;;
+		ds) assemble 1e ;;
+
+		$reg32) assemble $(hexadd 58 $(eval echo \$$1)) ;;
+		$reg16) assemble 66 $(hexadd 58 $(eval echo \$$1)) ;;
+		*) return 1 ;;
+	esac
+}
+
+instr_inc() {
+	args 1 || return 1
+	case "$1" in
+		$reg32) assemble $(hexadd 40 $(eval echo \$$1)) ;;
+		$reg16) assemble 66 $(hexadd 40 $(eval echo \$$1)) ;;
+		$reg8) assemble fe $(hexadd c0 $(eval echo \$$1)) ;;
+		*) return 1 ;;
+	esac
+}
+
+instr_dec() {
+	args 1 || return 1
+	case "$1" in
+		$reg32) assemble $(hexadd 48 $(eval echo \$$1)) ;;
+		$reg16) assemble 66 $(hexadd 48 $(eval echo \$$1)) ;;
+		$reg8) assemble fe $(hexadd c8 $(eval echo \$$1)) ;;
+		*) return 1 ;;
+	esac
+}
+
+instr_xor() {
+	args 2 || return 1
+	case "$2" in
+		$reg32)
+			case "$1" in
+				$reg32) assemble 31 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		$reg16)
+			case "$1" in
+				$reg16) assemble 66 31 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		$reg8)
+			case "$1" in
+				$reg8) assemble 30 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		*) return 1 ;;
+	esac
+}
+
+instr_mov() {
+	args 2 || return 1
+	case "$2" in
+		$reg32)
+			case "$1" in
+				$reg32) assemble 89 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		$reg16)
+			case "$1" in
+				$reg16) assemble 66 89 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		$reg8)
+			case "$1" in
+				$reg8) assemble 88 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				*) return 1 ;;
+			esac
+			;;
+		*) return 1 ;;
+	esac
+}
+
+instr_int() {
+	args 1 || return 1
+	case "$1" in
+		3) assemble cc ;;
+		$imm8|${imm8}h|$imm8b) assemble cd $(endian $(num $1)) ;;
+		*) return 1 ;;
+	esac
+}
+
+instr_cdq() {
+	args 0 || return 1
+	assemble 99
+}
+
+instr_add() {
+	:
+}
+
+instr_sub() {
+	:
+}
+
+instr_call() {
+	args 1 || return 1
+	case "$1" in
+		$reg32) assemble ff $(hexadd d0 $(eval echo \$$1)) ;;
+		$reg16) assemble 66 ff $(hexadd d0 $(eval echo \$$1)) ;;
+		*) return 1 ;;
+	esac
+}
+
+instr_jmp() {
+	args 1 || return 1
+	case "$1" in
+		$reg32) assemble ff $(hexadd e0 $(eval echo \$$1)) ;;
+		$reg16) assemble 66 ff $(hexadd e0 $(eval echo \$$1)) ;;
+		*) return 1 ;;
+	esac
+}
+
+instr_jz() {
+	:
+}
+
+instr_jnz() {
+	:
+}
+
+instr_jc() {
+	:
+}
+
+instr_jnc() {
+	:
+}
+
+instr_ja() {
+	:
+}
+
+instr_jae() {
+	:
+}
+
+instr_jb() {
+	:
+}
+
+instr_jbe() {
+	:
+}
+
+instr_jg() {
+	:
+}
+
+instr_jge() {
+	:
+}
+
+instr_jl() {
+	:
+}
+
+instr_jle() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+instr_foo() {
+	:
+}
+
+
