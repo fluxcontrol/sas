@@ -1,0 +1,21 @@
+0.1
+ * all mnemonics for x86, but only using registers (and possibly immediates)
+
+0.2
+ * memory referencing for some mnemonics
+
+0.3
+ * memory referencing for all mnemonics
+
+0.4
+ * source labels
+ * assembler directives
+
+0.5
+ * macro programming
+
+0.6
+ * ARM chipset mnemonics
+
+0.7
+ * MIPS chipset mnemonics
