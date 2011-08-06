@@ -70,25 +70,25 @@ instr_nop() {
 instr_xchg() {
 	args 2 || return 1
 	case "$2" in
-		eax) assemble $(hexadd 90 $(eval echo \$$1)) ;;
+		eax) assemble $(hexadd 90 $(get_reg $1)) ;;
 		$reg32)
 			case "$1" in
-				eax) assemble $(hexadd 90 $(eval echo \$$2)) ;;
-				$reg32) assemble 87 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				eax) assemble $(hexadd 90 $(get_reg $2)) ;;
+				$reg32) assemble 87 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
-		ax) assemble 66 $(hexadd 90 $(eval echo \$$1)) ;;
+		ax) assemble 66 $(hexadd 90 $(get_reg $1)) ;;
 		$reg16)
 			case "$1" in
-				ax) assemble 66 $(hexadd 90 $(eval echo \$$2)) ;;
-				$reg16) assemble 66 87 $(hexadd "c0" $(hexmult 8 $(eval echo \$$1)) $(eval echo \$$2)) ;;
+				ax) assemble 66 $(hexadd 90 $(get_reg $2)) ;;
+				$reg16) assemble 66 87 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) ;;
 				*) return 1 ;;
 			esac
 			;;
 		$reg8)
 			case "$1" in
-				$reg8) assemble 86 $(hexadd "c0" $(hexmult 8 $(eval echo \$$1)) $(eval echo \$$2)) ;;
+				$reg8) assemble 86 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) ;;
 				*) return 1 ;;
 			esac
 			;;
@@ -112,8 +112,8 @@ instr_push() {
 		ss) assemble 16 ;;
 		ds) assemble 1e ;;
 
-		$reg32) assemble $(hexadd "50" $(eval echo \$$1)) ;;
-		$reg16) assemble 66 $(hexadd "50" $(eval echo \$$1)) ;;
+		$reg32) assemble $(hexadd 50 $(get_reg $1)) ;;
+		$reg16) assemble 66 $(hexadd 50 $(get_reg $1)) ;;
 		$reg8) return 1 ;;
 		*) assemble 68 $(endian $(num "$1")) ;;
 	esac
@@ -127,8 +127,8 @@ instr_pop() {
 		ss) assemble 16 ;;
 		ds) assemble 1e ;;
 
-		$reg32) assemble $(hexadd 58 $(eval echo \$$1)) ;;
-		$reg16) assemble 66 $(hexadd 58 $(eval echo \$$1)) ;;
+		$reg32) assemble $(hexadd 58 $(get_reg $1)) ;;
+		$reg16) assemble 66 $(hexadd 58 $(get_reg $1)) ;;
 		*) return 1 ;;
 	esac
 }
@@ -136,9 +136,9 @@ instr_pop() {
 instr_inc() {
 	args 1 || return 1
 	case "$1" in
-		$reg32) assemble $(hexadd 40 $(eval echo \$$1)) ;;
-		$reg16) assemble 66 $(hexadd 40 $(eval echo \$$1)) ;;
-		$reg8) assemble fe $(hexadd c0 $(eval echo \$$1)) ;;
+		$reg32) assemble $(hexadd 40 $(get_reg $1)) ;;
+		$reg16) assemble 66 $(hexadd 40 $(get_reg $1)) ;;
+		$reg8) assemble fe $(hexadd c0 $(get_reg $1)) ;;
 		*) return 1 ;;
 	esac
 }
@@ -146,9 +146,9 @@ instr_inc() {
 instr_dec() {
 	args 1 || return 1
 	case "$1" in
-		$reg32) assemble $(hexadd 48 $(eval echo \$$1)) ;;
-		$reg16) assemble 66 $(hexadd 48 $(eval echo \$$1)) ;;
-		$reg8) assemble fe $(hexadd c8 $(eval echo \$$1)) ;;
+		$reg32) assemble $(hexadd 48 $(get_reg $1)) ;;
+		$reg16) assemble 66 $(hexadd 48 $(get_reg $1)) ;;
+		$reg8) assemble fe $(hexadd c8 $(get_reg $1)) ;;
 		*) return 1 ;;
 	esac
 }
@@ -158,19 +158,19 @@ instr_xor() {
 	case "$2" in
 		$reg32)
 			case "$1" in
-				$reg32) assemble 31 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				$reg32) assemble 31 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
 		$reg16)
 			case "$1" in
-				$reg16) assemble 66 31 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				$reg16) assemble 66 31 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
 		$reg8)
 			case "$1" in
-				$reg8) assemble 30 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				$reg8) assemble 30 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
@@ -183,19 +183,19 @@ instr_mov() {
 	case "$2" in
 		$reg32)
 			case "$1" in
-				$reg32) assemble 89 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				$reg32) assemble 89 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
 		$reg16)
 			case "$1" in
-				$reg16) assemble 66 89 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				$reg16) assemble 66 89 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
 		$reg8)
 			case "$1" in
-				$reg8) assemble 88 $(hexadd "c0" $(hexmult 8 $(eval echo \$$2)) $(eval echo \$$1)) ;;
+				$reg8) assemble 88 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
 				*) return 1 ;;
 			esac
 			;;
@@ -228,8 +228,8 @@ instr_sub() {
 instr_call() {
 	args 1 || return 1
 	case "$1" in
-		$reg32) assemble ff $(hexadd d0 $(eval echo \$$1)) ;;
-		$reg16) assemble 66 ff $(hexadd d0 $(eval echo \$$1)) ;;
+		$reg32) assemble ff $(hexadd d0 $(get_reg $1)) ;;
+		$reg16) assemble 66 ff $(hexadd d0 $(get_reg $1)) ;;
 		*) return 1 ;;
 	esac
 }
@@ -237,8 +237,8 @@ instr_call() {
 instr_jmp() {
 	args 1 || return 1
 	case "$1" in
-		$reg32) assemble ff $(hexadd e0 $(eval echo \$$1)) ;;
-		$reg16) assemble 66 ff $(hexadd e0 $(eval echo \$$1)) ;;
+		$reg32) assemble ff $(hexadd e0 $(get_reg $1)) ;;
+		$reg16) assemble 66 ff $(hexadd e0 $(get_reg $1)) ;;
 		*) return 1 ;;
 	esac
 }

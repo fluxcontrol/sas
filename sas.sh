@@ -114,6 +114,10 @@ hexmult() {
 	echo "$ret"
 }
 
+get_reg() {
+	eval echo \$$1
+}
+
 assemble() {
 	if [ "$DEBUG" -eq 1 ]
 	then
