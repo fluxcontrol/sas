@@ -118,7 +118,7 @@ assemble() {
 	if [ "$DEBUG" -eq 1 ]
 	then
 		string="$@"
-		command /bin/printf "assemble %s: " "$string"
+		command /bin/printf "assemble: <%s> " "$string"
 	fi
 
 	for byte in $@
