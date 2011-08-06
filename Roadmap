@@ -3,6 +3,7 @@
 
 0.2
  * memory referencing for some mnemonics
+ * better decoding/conversion/interpretation of numbers and number formats
 
 0.3
  * memory referencing for all mnemonics
