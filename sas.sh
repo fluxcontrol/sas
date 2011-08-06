@@ -203,13 +203,13 @@ assemble_file() {
 	then
 		while read input
 		do
-			input=$(decomment "$input") 
+			input=$(decomment "$input")
 			[ -n "$input" ] && exec_instr $input
 		done < "$1"
 	else
 		while read input
 		do
-			input=$(decomment "$input") 
+			input=$(decomment "$input")
 			[ -n "$input" ] && exec_instr $input
 		done
 	fi
@@ -217,7 +217,7 @@ assemble_file() {
 
 assemble_direct() {
 	input="${CODE:-$@}"
-	input=$(decomment "$input") 
+	input=$(decomment "$input")
 	[ -n "$input" ] && exec_instr $input
 }
 
