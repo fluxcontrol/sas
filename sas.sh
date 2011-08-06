@@ -69,13 +69,21 @@ num() {
 	num="$1"
 
 	case "$num" in
-		*d) num=$(echo "$num" | sed 's/b$//' | dec_hex) ;;
-		*b) num=$(echo "$num" | sed 's/b$//' | bin_hex) ;;
-		0x*) num=$(echo "$num" | sed 's/h$//') ;;
-		*) num=$(echo "$num" | grep '^[0-9a-f]*h$' | sed 's/h$//') ;;
+		*d) num=$(echo "$num" | sed 's/b$//' | convert_dec_hex) ;;
+		*b) num=$(echo "$num" | sed 's/b$//' | convert_bin_hex) ;;
+		0x*) num=$(echo "$num" | sed 's/^0x//') ;;
+		*h) num=$(echo "$num" | sed 's/h$//') ;;
 	esac
 
-	convert_num2bytes "$num"
+	for byte in $(convert_num2bytes "$num")
+	do
+		if [ "${#byte}" -eq 2 ]
+		then
+			printf "%s " "$byte"
+		else
+			printf "0%s " "$byte"
+		fi
+	done
 }
 
 endian() {
