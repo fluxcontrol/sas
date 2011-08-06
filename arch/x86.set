@@ -97,6 +97,126 @@ instr_popfd() {
 	assemble 9d
 }
 
+instr_rol() {
+	args 2 || return 1
+	if [ "$2" = "1" ]
+	then
+		case "$1" in
+			$reg32) assemble d1 $(hexadd c0 $(get_reg $1)) ;;
+			$reg16) assemble 66 d1 $(hexadd c0 $(get_reg $1)) ;;
+			$reg8) assemble d0 $(hexadd c0 $(get_reg $1)) ;;
+			*) return 1 ;;
+		esac
+	else
+		case "$1" in
+			$reg32) assemble c1 $(hexadd c0 $(get_reg $1)) $(num $2) ;;
+			$reg16) assemble 66 c1 $(hexadd c0 $(get_reg $1)) $(num $2) ;;
+			$reg8) assemble c0 $(hexadd c0 $(get_reg $1)) $(num $2) ;;
+			*) return 1 ;;
+		esac
+	fi
+}
+
+instr_ror() {
+	args 2 || return 1
+	if [ "$2" = "1" ]
+	then
+		case "$1" in
+			$reg32) assemble d1 $(hexadd c8 $(get_reg $1)) ;;
+			$reg16) assemble 66 d1 $(hexadd c8 $(get_reg $1)) ;;
+			$reg8) assemble d0 $(hexadd c8 $(get_reg $1)) ;;
+			*) return 1 ;;
+		esac
+	else
+		case "$1" in
+			$reg32) assemble c1 $(hexadd c8 $(get_reg $1)) $(num $2) ;;
+			$reg16) assemble 66 c1 $(hexadd c8 $(get_reg $1)) $(num $2) ;;
+			$reg8) assemble c0 $(hexadd c8 $(get_reg $1)) $(num $2) ;;
+			*) return 1 ;;
+		esac
+	fi
+}
+
+instr_shl() {
+	args 2 || return 1
+	if [ "$2" = "1" ]
+	then
+		case "$1" in
+			$reg32) assemble d1 $(hexadd e0 $(get_reg $1)) ;;
+			$reg16) assemble 66 d1 $(hexadd e0 $(get_reg $1)) ;;
+			$reg8) assemble d0 $(hexadd e0 $(get_reg $1)) ;;
+			*) return 1 ;;
+		esac
+	else
+		case "$1" in
+			$reg32) assemble c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
+			$reg16) assemble 66 c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
+			$reg8) assemble c0 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
+			*) return 1 ;;
+		esac
+	fi
+}
+
+instr_shr() {
+	args 2 || return 1
+	if [ "$2" = "1" ]
+	then
+		case "$1" in
+			$reg32) assemble d1 $(hexadd e8 $(get_reg $1)) ;;
+			$reg16) assemble 66 d1 $(hexadd e8 $(get_reg $1)) ;;
+			$reg8) assemble d0 $(hexadd e8 $(get_reg $1)) ;;
+			*) return 1 ;;
+		esac
+	else
+		case "$1" in
+			$reg32) assemble c1 $(hexadd e8 $(get_reg $1)) $(num $2) ;;
+			$reg16) assemble 66 c1 $(hexadd e8 $(get_reg $1)) $(num $2) ;;
+			$reg8) assemble c0 $(hexadd e8 $(get_reg $1)) $(num $2) ;;
+			*) return 1 ;;
+		esac
+	fi
+}
+
+instr_sal() {
+	args 2 || return 1
+	if [ "$2" = "1" ]
+	then
+		case "$1" in
+			$reg32) assemble d1 $(hexadd e0 $(get_reg $1)) ;;
+			$reg16) assemble 66 d1 $(hexadd e0 $(get_reg $1)) ;;
+			$reg8) assemble d0 $(hexadd e0 $(get_reg $1)) ;;
+			*) return 1 ;;
+		esac
+	else
+		case "$1" in
+			$reg32) assemble c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
+			$reg16) assemble 66 c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
+			$reg8) assemble c0 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
+			*) return 1 ;;
+		esac
+	fi
+}
+
+instr_sar() {
+	args 2 || return 1
+	if [ "$2" = "1" ]
+	then
+		case "$1" in
+			$reg32) assemble d1 $(hexadd f8 $(get_reg $1)) ;;
+			$reg16) assemble 66 d1 $(hexadd f8 $(get_reg $1)) ;;
+			$reg8) assemble d0 $(hexadd f8 $(get_reg $1)) ;;
+			*) return 1 ;;
+		esac
+	else
+		case "$1" in
+			$reg32) assemble c1 $(hexadd f8 $(get_reg $1)) $(num $2) ;;
+			$reg16) assemble 66 c1 $(hexadd f8 $(get_reg $1)) $(num $2) ;;
+			$reg8) assemble c0 $(hexadd f8 $(get_reg $1)) $(num $2) ;;
+			*) return 1 ;;
+		esac
+	fi
+}
+
 instr_xchg() {
 	args 2 || return 1
 	case "$2" in
