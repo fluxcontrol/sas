@@ -67,6 +67,36 @@ instr_nop() {
 	assemble 90
 }
 
+instr_sahf() {
+	args 0 || return 1
+	assemble 9e
+}
+
+instr_lahf() {
+	args 0 || return 1
+	assemble 9f
+}
+
+instr_pushf() {
+	args 0 || return 1
+	assemble 9c
+}
+
+instr_pushfd() {
+	args 0 || return 1
+	assemble 9c
+}
+
+instr_popf() {
+	args 0 || return 1
+	assemble 9d
+}
+
+instr_popfd() {
+	args 0 || return 1
+	assemble 9d
+}
+
 instr_xchg() {
 	args 2 || return 1
 	case "$2" in
