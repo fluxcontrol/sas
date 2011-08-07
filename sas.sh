@@ -99,18 +99,31 @@ convert_bin_hex() {
 	hex=""
 }
 
+# this is ugly, but avoids a call to sed '/\(..\)/\1 /g'
+# makes the program faster by about 0.04s (real),
+# which is roughly a 10% increase in speed
 convert_num2bytes() {
-	echo "$1" | sed 's/\(..\)/\1 /g'
+	string=" $1"
+	count="$((${#1}/2))"
+	i="0"
+	ret=""
+	while [ "$i" -lt "$count" ]
+	do
+		ret="${ret}${string%${string##* ??}}"
+		string=" ${string##* ??}"
+		i="$(($i+1))"
+	done
+	echo "$ret"
 }
 
 num() {
 	num="$1"
 
 	case "$num" in
-		*d) num=$(echo "$num" | sed 's/b$//' | convert_dec_hex) ;;
-		*b) num=$(echo "$num" | sed 's/b$//' | convert_bin_hex) ;;
-		0x*) num=$(echo "$num" | sed 's/^0x//') ;;
-		*h) num=$(echo "$num" | sed 's/h$//') ;;
+		*d) num=$(echo "${num%d}" | convert_dec_hex) ;;
+		*b) num=$(echo "${num%b}" | convert_bin_hex) ;;
+		0x*) num=$(echo "${num#0x}") ;;
+		*h) num=$(echo "${num%h}") ;;
 	esac
 
 	for byte in $(convert_num2bytes "$num")
@@ -180,7 +193,7 @@ args() {
 }
 
 decomment() {
-	echo "$1" | sed 's/;.*//'
+	echo "${1%%;*}"
 }
 
 invalid() {
