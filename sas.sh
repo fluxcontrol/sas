@@ -35,6 +35,10 @@ IFS=$(command -p printf "\n\t ")
 ### CODE
 ###   this is the code that actually assembles the instructions
 ################################################################################
+run() {
+	command -p "$@"
+}
+
 sas_help () {
 	run cat <<EOF
 
@@ -92,7 +96,7 @@ array_count() {
 }
 
 convert_dec_hex() {
-	command /bin/printf "%x" "$1"
+	run printf "%x" "$1"
 }
 
 convert_bin_hex() {
@@ -130,15 +134,15 @@ num() {
 	do
 		if [ "${#byte}" -eq 2 ]
 		then
-			printf "%s " "$byte"
+			run printf "%s " "$byte"
 		else
-			printf "0%s " "$byte"
+			run printf "0%s " "$byte"
 		fi
 	done
 }
 
 endian() {
-	echo "$@" | tr " " "\n" | tac
+	echo "$@" | run tr " " "\n" | run tac
 }
 
 hexadd() {
@@ -146,7 +150,7 @@ hexadd() {
 
 	while [ "$#" -gt 0 ]
 	do
-		ret=$(command /bin/printf "%x" $((0x$ret + 0x$1)))
+		ret=$(run printf "%x" $((0x$ret + 0x$1)))
 		shift
 	done
 
@@ -158,7 +162,7 @@ hexmult() {
 
 	while [ "$#" -gt 0 ]
 	do
-		ret=$(command /bin/printf "%x" $((0x$ret * 0x$1)))
+		ret=$(run printf "%x" $((0x$ret * 0x$1)))
 		shift
 	done
 
@@ -173,12 +177,12 @@ assemble() {
 	if [ "$SAS_VERBOSE" -eq 1 ]
 	then
 		string="$@"
-		command /bin/printf "assemble: <%s> " "$string"
+		run printf "assemble: <%s> " "$string"
 	fi
 
 	for byte in $@
 	do
-		command /bin/printf "\x$byte" >> "$SAS_OUTPUT" ||
+		run printf "\x$byte" >> "$SAS_OUTPUT" ||
 			return 1
 	done
 
