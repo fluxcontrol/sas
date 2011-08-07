@@ -108,11 +108,13 @@ array_count() {
 }
 
 convert_dec_hex() {
-	output_hex "$1"
+	ret=$(output_hex "$1")
+	[ ${#ret} -eq 1 ] && ret="0$ret"
+	output "$ret"
 }
 
 convert_bin_hex() {
-	hex=""
+	ret=""
 }
 
 # this is ugly, but avoids a call to sed '/\(..\)/\1 /g'
@@ -123,12 +125,14 @@ convert_num2bytes() {
 	count="$((${#1}/2))"
 	i="0"
 	ret=""
+
 	while [ "$i" -lt "$count" ]
 	do
 		ret="${ret}${string%${string##* ??}}"
 		string=" ${string##* ??}"
 		i="$(($i+1))"
 	done
+
 	output "$ret"
 }
 
@@ -144,12 +148,8 @@ num() {
 
 	for byte in $(convert_num2bytes "$num")
 	do
-		if [ "${#byte}" -eq 2 ]
-		then
-			output "$byte "
-		else
-			output "0$byte "
-		fi
+		[ "${#byte}" -eq 1 ] && byte="0$byte"
+		output "$byte "
 	done
 }
 
@@ -167,6 +167,7 @@ hexadd() {
 		shift
 	done
 
+	[ "${#ret}" -eq 1 ] && ret="0$ret"
 	output "$ret"
 }
 
@@ -179,6 +180,7 @@ hexmult() {
 		shift
 	done
 
+	[ "${#ret}" -eq 1 ] && ret="0$ret"
 	output "$ret"
 }
 
