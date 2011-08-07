@@ -26,7 +26,8 @@ CODE="${CODE:-}"
 ARCH_DIR=$(readlink -e "$0")
 ARCH_DIR="${ARCH_DIR%/*}/arch"
 
-IFS=$(command /bin/printf "\n\t ")
+# Don't change this unless you are prepared to deal with the consequences
+IFS=$(command -p printf "\n\t ")
 
 
 ################################################################################
