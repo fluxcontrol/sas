@@ -183,7 +183,13 @@ hexmult() {
 }
 
 get_reg() {
-	eval output "\$$1"
+	while [ "$#" -gt 0 ]
+	do
+		eval string="\$$1"
+		[ "${#string}" -eq 1 ] && string="0$string"
+		output "$string "
+		shift
+	done
 }
 
 assemble() {
