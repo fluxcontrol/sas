@@ -39,6 +39,18 @@ run() {
 	command -p "$@"
 }
 
+output() {
+	run printf "%s" "$1"
+}
+
+output_nl() {
+	run printf "%s\n" "$1"
+}
+
+output_hex() {
+	run printf "%x" "$1"
+}
+
 sas_help () {
 	run cat <<EOF
 
@@ -92,11 +104,11 @@ array_count() {
 	do
 		count=$((count+1))
 	done
-	echo "$count"
+	output "$count"
 }
 
 convert_dec_hex() {
-	run printf "%x" "$1"
+	output_hex "$1"
 }
 
 convert_bin_hex() {
@@ -117,32 +129,33 @@ convert_num2bytes() {
 		string=" ${string##* ??}"
 		i="$(($i+1))"
 	done
-	echo "$ret"
+	output "$ret"
 }
 
 num() {
 	num="$1"
 
 	case "$num" in
-		*d) num=$(echo "${num%d}" | convert_dec_hex) ;;
-		*b) num=$(echo "${num%b}" | convert_bin_hex) ;;
-		0x*) num=$(echo "${num#0x}") ;;
-		*h) num=$(echo "${num%h}") ;;
+		*d) num=$(output "${num%d}" | convert_dec_hex) ;;
+		*b) num=$(output "${num%b}" | convert_bin_hex) ;;
+		0x*) num=$(output "${num#0x}") ;;
+		*h) num=$(output "${num%h}") ;;
 	esac
 
 	for byte in $(convert_num2bytes "$num")
 	do
 		if [ "${#byte}" -eq 2 ]
 		then
-			run printf "%s " "$byte"
+			output "$byte "
 		else
-			run printf "0%s " "$byte"
+			output "0$byte "
 		fi
 	done
 }
 
 endian() {
-	echo "$@" | run tr " " "\n" | run tac
+	string="$@"
+	output_nl "$string" | run tr " " "\n" | run tac
 }
 
 hexadd() {
@@ -150,11 +163,11 @@ hexadd() {
 
 	while [ "$#" -gt 0 ]
 	do
-		ret=$(run printf "%x" $((0x$ret + 0x$1)))
+		ret=$(output_hex $((0x$ret + 0x$1)))
 		shift
 	done
 
-	echo "$ret"
+	output "$ret"
 }
 
 hexmult() {
@@ -162,22 +175,22 @@ hexmult() {
 
 	while [ "$#" -gt 0 ]
 	do
-		ret=$(run printf "%x" $((0x$ret * 0x$1)))
+		ret=$(output_hex $((0x$ret * 0x$1)))
 		shift
 	done
 
-	echo "$ret"
+	output "$ret"
 }
 
 get_reg() {
-	eval echo \$$1
+	eval output "\$$1"
 }
 
 assemble() {
 	if [ "$SAS_VERBOSE" -eq 1 ]
 	then
 		string="$@"
-		run printf "assemble: <%s> " "$string"
+		output "assemble: <$string> "
 	fi
 
 	for byte in $@
@@ -186,7 +199,7 @@ assemble() {
 			return 1
 	done
 
-	[ "$SAS_VERBOSE" -eq 1 ] && echo ''
+	[ "$SAS_VERBOSE" -eq 1 ] && output_nl
 
 	return 0
 }
@@ -197,18 +210,19 @@ args() {
 }
 
 decomment() {
-	echo "${1%%;*}"
+	output "${1%%;*}"
 }
 
 invalid() {
-	echo "error: unrecognized instruction: $@"
+	output_nl "error: unrecognized instruction: $@"
 	return 1
 }
 
 exec_instr() {
 	op="$1"
 	shift
-	arguments=$(echo "$@" | tr ',' ' ')
+	string="$@"
+	arguments=$(output "$string" | tr ',' ' ')
 	
 	if [ -n "$op" ]
 	then
@@ -248,7 +262,7 @@ load_instr() {
 search_instr() {
 	for arch in "$SAS_ARCH_DIR"/*.set
 	do
-		run printf "${arch%.set}\n"
+		output_nl "${arch%.set}"
 	done
 	exit 1
 }
