@@ -1,9 +1,4 @@
 #!/bin/sh
-
-# shell script x86 assembler
-#   for now, only basic mnemonics.
-#   more will be added later
-
 ################################################################################
 # each ASM instruction is encoded as a function
 # each such instr_calls out to a generic assemble() function
