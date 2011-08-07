@@ -39,9 +39,50 @@ IFS=$(command /bin/printf "\n\t ")
 ###   this is the code that actually assembles the instructions
 ################################################################################
 sas_help () {
-	cat <<EOF
-	usage: ${0##*/} [-adhi] [-f infile] [-o outfile] [STDIN]
+	run cat <<EOF
+
+usage: ${0##*/} [-afhiov] <ASM> | <FILE> | <STDIN>
+
+${0##*/} is a pure POSIX shell assembler. It accepts assembly input in one of
+three forms: from a file specified via the -f flag or as the last argument on
+the command-line, a single direct instruction plus any operands specified via
+the -a flag or as the last arguments on the command-line, or via STDIN. If
+STDIN is used, it will read STDIN until an EOF is reached. You can use this to
+type an entire source file directly into STDIN using the shell's \$P1.
+
+OPTIONS:
+	-a ASSEMBLY_INSTRUCTION
+		Assemble the instruction passed, plus any operands, passed in.
+		For longer lists of instructions to assemble at a time, use of
+		either a source file or STDIN is required. This option
+		overrides later options (including the bare <ASM>, <FILE>, or
+		<STDIN> inputs).
+
+	-f INPUT_FILE
+		Assemble the instructions found in file INPUT_FILE. This option
+		overrides later options (including the bare <ASM>, <FILE>, or
+		<STDIN> inputs).
+
+	-h
+		Prints this help message.
+
+	-i INSTRUCTION_SET
+		Selects the instruction set used to assemble the instructions.
+		To get a list of the instruction sets that are available, use
+		"help" as the INSTRUCTION_SET:
+			-i help
+	-o OUTPUT_FILE
+		Write the assembled opcodes to file OUTPUT_FILE. By default,
+		output is written to STDOUT. You could also leave this option
+		unspecified and redirect STDOUT to a file to achieve the same
+		effect.
+
+	-v
+		Verbose output: prints some diagnostic messages on what is
+		currently being assembled, and what it assembles to.
+
 EOF
+	exit 1
 }
 
 array_count() {
