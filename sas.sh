@@ -19,12 +19,13 @@
 ################################################################################
 SAS_OUTPUT="${SAS_OUTPUT:-/dev/stdout}"
 
-DEBUG=${DEBUG:-0}
-ARCH=${ARCH:-x86}
-CODE="${CODE:-}"
+SAS_VERBOSE=${SAS_VERBOSE:-0}
+SAS_ARCH=${SAS_ARCH:-x86}
+SAS_INCODE="${SAS_INCODE:-}"
+SAS_INFILE="${SAS_INFILE:-}"
 
-ARCH_DIR=$(readlink -e "$0")
-ARCH_DIR="${ARCH_DIR%/*}/arch"
+SAS_ARCH_DIR="${SAS_ARCH_DIR:-$(command -p readlink -e $0 | sed s#$0\$#arch#)}"
+
 
 # Don't change this unless you are prepared to deal with the consequences
 IFS=$(command -p printf "\n\t ")
@@ -156,7 +157,7 @@ get_reg() {
 }
 
 assemble() {
-	if [ "$DEBUG" -eq 1 ]
+	if [ "$SAS_VERBOSE" -eq 1 ]
 	then
 		string="$@"
 		command /bin/printf "assemble: <%s> " "$string"
@@ -168,7 +169,7 @@ assemble() {
 			return 1
 	done
 
-	[ "$DEBUG" -eq 1 ] && echo ''
+	[ "$SAS_VERBOSE" -eq 1 ] && echo ''
 
 	return 0
 }
@@ -218,13 +219,13 @@ assemble_file() {
 }
 
 assemble_direct() {
-	input="${CODE:-$@}"
+	input="${SAS_INCODE:-$@}"
 	input=$(decomment "$input")
 	[ -n "$input" ] && exec_instr $input
 }
 
 load_instr() {
-	. "$ARCH_DIR/$ARCH.set"
+	. "$SAS_ARCH_DIR/$SAS_ARCH.set"
 }
 
 search_instr() {
@@ -241,17 +242,18 @@ process_cmdline() {
 	do
 		case "$1" in
 			-a)
-				CODE="$2"
-				shift 2
+				shift 1
+				SAS_INCODE="$@"
+				shift 1
 				count=$((count+2))
 				;;
 			-d)
-				DEBUG="1"
+				SAS_VERBOSE="1"
 				shift 1
 				count=$((count+1))
 				;;
 			-f)
-				FILE="$2"
+				SAS_INFILE="$2"
 				shift 2
 				count=$((count+2))
 				;;
@@ -265,7 +267,7 @@ process_cmdline() {
 				then
 					search_instr
 				else
-					ARCH="$2"
+					SAS_ARCH="$2"
 				fi
 				shift 2
 				count=$((count+2))
@@ -287,10 +289,10 @@ process_cmdline "$@"
 shift "$?"
 load_instr
 
-if [ -f "${FILE:-$1}" ]
+if [ -f "${SAS_INFILE:-$1}" ]
 then
-	assemble_file "${FILE:-$1}"
-elif [ -n "$CODE" ] || [ "$#" -gt 0 ]
+	assemble_file "${SAS_INFILE:-$1}"
+elif [ -n "$SAS_INCODE" ] || [ "$#" -gt 0 ]
 then
 	assemble_direct "$@"
 else
