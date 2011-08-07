@@ -200,6 +200,33 @@ exec_instr() {
 	fi
 }
 
+assemble_file() {
+	if [ "$#" -eq 1 ]
+	then
+		while read input
+		do
+			input=$(decomment "$input")
+			[ -n "$input" ] && exec_instr $input
+		done < "$1"
+	else
+		while read input
+		do
+			input=$(decomment "$input")
+			[ -n "$input" ] && exec_instr $input
+		done
+	fi
+}
+
+assemble_direct() {
+	input="${CODE:-$@}"
+	input=$(decomment "$input")
+	[ -n "$input" ] && exec_instr $input
+}
+
+load_instr() {
+	. "$ARCH_DIR/$ARCH.set"
+}
+
 search_instr() {
 	for arch in "$SAS_ARCH_DIR"/*.set
 	do
@@ -254,33 +281,6 @@ process_cmdline() {
 		esac
 	done
 	return $count
-}
-
-load_instr() {
-	. "$ARCH_DIR/$ARCH.set"
-}
-
-assemble_file() {
-	if [ "$#" -eq 1 ]
-	then
-		while read input
-		do
-			input=$(decomment "$input")
-			[ -n "$input" ] && exec_instr $input
-		done < "$1"
-	else
-		while read input
-		do
-			input=$(decomment "$input")
-			[ -n "$input" ] && exec_instr $input
-		done
-	fi
-}
-
-assemble_direct() {
-	input="${CODE:-$@}"
-	input=$(decomment "$input")
-	[ -n "$input" ] && exec_instr $input
 }
 
 process_cmdline "$@"
