@@ -163,6 +163,14 @@ exec_instr() {
 	fi
 }
 
+search_instr() {
+	for arch in "$SAS_ARCH_DIR"/*.set
+	do
+		run printf "${arch%.set}\n"
+	done
+	exit 1
+}
+
 process_cmdline() {
 	count=0
 	while [ "$#" -gt 0 ]
@@ -189,7 +197,12 @@ process_cmdline() {
 				count=$((count+1))
 				;;
 			-i)
-				ARCH="$2"
+				if [ "$2" = "help" ]
+				then
+					search_instr
+				else
+					ARCH="$2"
+				fi
 				shift 2
 				count=$((count+2))
 				;;
