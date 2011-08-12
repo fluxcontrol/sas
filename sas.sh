@@ -168,7 +168,7 @@ tohex() {
 		   *$hex) num=$(output "$1") ;;
 	esac
 	[ $(($num % 2)) -eq 1 ] && num="0$num"
-	[ "${#num}" -eq "${2:-${#num}}" ] || return 1
+	[ "$((${#num}/2))" -eq "${2:-$((${#num}/2))}" ] || return 1
 	output "$num"
 }
 

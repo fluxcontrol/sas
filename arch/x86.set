@@ -349,7 +349,7 @@ instr_int() {
 	case "$1" in
 		3) assemble cc ;;
 		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || return 1
+			tohex "$1" 1 || return 1
 			assemble cd $(num "$1")
 			;;
 		*) return 1 ;;
