@@ -156,12 +156,6 @@ tobytes() {
 		string=" ${string##* ??}"
 		i="$(($i+1))"
 	done
-
-	for byte in "$ret"
-	do
-		[ "${#byte}" -eq 1 ] && byte="0$byte"
-		output "$byte "
-	done
 }
 
 tohex() {
@@ -173,6 +167,7 @@ tohex() {
 		*${hex}h) num=$(strip_zero "${1%h}") ;;
 		   *$hex) num=$(output "$1") ;;
 	esac
+	[ $(($num % 2)) -eq 1 ] && num="0$num"
 	[ "${#num}" -eq "${2:-${#num}}" ] || return 1
 	output "$num"
 }
