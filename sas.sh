@@ -108,14 +108,23 @@ array_count() {
 	output "$count"
 }
 
+strip_zero() {
+	num="$1"
+	while [ "${num%${num#?}}" = '0' ]
+	do
+		num="${num#0}"
+	done
+	output "$num"
+}
+
 convert_dec_hex() {
-	ret=$(output_hex "$1")
+	ret=$(output_hex $(strip_zero "$1"))
 	[ ${#ret} -eq 1 ] && ret="0$ret"
 	output "$ret"
 }
 
 convert_bin_hex() {
-	string="$1"
+	string=$(strip_zero "$1")
 	i=1
 	ret=""
 	while [ "${#string}" -gt 0 ]
