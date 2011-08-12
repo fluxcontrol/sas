@@ -154,7 +154,6 @@ tobytes() {
 	count="$((${#1}/2))"
 	i="0"
 	ret=""
-
 	while [ "$i" -lt "$count" ]
 	do
 		ret="${ret}${string%${string##* ??}}"
@@ -185,48 +184,43 @@ num() {
 endian() {
 	string=" $@"
 	ret=""
-
 	while [ -n "$string" ]
 	do
 		ret="$ret${string##* } "
 		string="${string% *}"
 	done
-	ret="${ret% }"
-	output "$ret"
+	output "${ret% }"
 }
 
 hexadd() {
 	ret="0"
-
 	while [ "$#" -gt 0 ]
 	do
 		ret=$(output_hex $((0x$ret + 0x$1)))
 		shift
 	done
-
-	[ "${#ret}" -eq 1 ] && ret="0$ret"
+	[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
 	output "$ret"
 }
 
 hexmult() {
 	ret="1"
-
 	while [ "$#" -gt 0 ]
 	do
 		ret=$(output_hex $((0x$ret * 0x$1)))
 		shift
 	done
-
-	[ "${#ret}" -eq 1 ] && ret="0$ret"
+	[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
 	output "$ret"
 }
 
 get_reg() {
+	ret=""
 	while [ "$#" -gt 0 ]
 	do
-		eval string="\$$1"
-		[ "${#string}" -eq 1 ] && string="0$string"
-		output "$string "
+		eval ret="\$$1"
+		[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
+		output "$ret "
 		shift
 	done
 }
