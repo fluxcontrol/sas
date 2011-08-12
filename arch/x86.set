@@ -61,6 +61,8 @@ instr_nop() {
 	assemble 90
 }
 
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# flags
 instr_sahf() {
 	args 0 || return 1
 	assemble 9e
@@ -89,6 +91,239 @@ instr_popf() {
 instr_popfd() {
 	args 0 || return 1
 	assemble 9d
+}
+
+instr_clc() {
+	args 0 || return 1
+	assemble f8
+}
+
+instr_cld() {
+	args 0 || return 1
+	assemble fc
+}
+
+instr_stc() {
+	args 0 || return 1
+	assemble f9
+}
+
+instr_std() {
+	args 0 || return 1
+	assemble fd
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# string ops
+instr_cmpsb() {
+	args 0 || return 1
+	assemble a6
+}
+
+instr_cmpsw() {
+	args 0 || return 1
+	assemble 66 a7
+}
+
+instr_cmpsd() {
+	args 0 || return 1
+	assemble a7
+}
+
+instr_lodsb() {
+	args 0 || return 1
+	assemble ac
+}
+
+instr_lodsw() {
+	args 0 || return 1
+	assemble 66 ad
+}
+
+instr_lodsd() {
+	args 0 || return 1
+	assemble ad
+}
+
+instr_movsb() {
+	args 0 || return 1
+	assemble a4
+}
+
+instr_movsw() {
+	args 0 || return 1
+	assemble 66 a5
+}
+
+instr_movsd() {
+	args 0 || return 1
+	assemble a5
+}
+
+instr_scasb() {
+	args 0 || return 1
+	assemble ae
+}
+
+instr_scasw() {
+	args 0 || return 1
+	assemble 66 af
+}
+
+instr_scasd() {
+	args 0 || return 1
+	assemble af
+}
+
+instr_stosb() {
+	args 0 || return 1
+	assemble aa
+}
+
+instr_stosw() {
+	args 0 || return 1
+	assemble 66 ab
+}
+
+instr_stosd() {
+	args 0 || return 1
+	assemble ab
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# repeats (loops)
+instr_rep() {
+	args 0 || return 1
+	assemble f3
+}
+
+instr_repz() {
+	args 0 || return 1
+	assemble f3
+}
+
+instr_repe() {
+	args 0 || return 1
+	assemble f3
+}
+
+instr_repnz() {
+	args 0 || return 1
+	assemble f2
+}
+
+instr_repne() {
+	args 0 || return 1
+	assemble f2
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+instr_pusha() {
+	args 0 || return 1
+	assemble 60
+}
+
+instr_pushad() {
+	args 0 || return 1
+	assemble 60
+}
+
+instr_popa() {
+	args 0 || return 1
+	assemble 61
+}
+
+instr_popad() {
+	args 0 || return 1
+	assemble 61
+}
+
+instr_aaa() {
+	args 0 || return 1
+	assemble 37
+}
+
+instr_aas() {
+	args 0 || return 1
+	assemble 3f
+}
+
+instr_cbw() {
+	args 0 || return 1
+	assemble 66 98
+}
+
+instr_cdq() {
+	args 0 || return 1
+	assemble 99
+}
+
+instr_cmc() {
+	args 0 || return 1
+	assemble f5
+}
+
+instr_cwd() {
+	args 0 || return 1
+	assemble 66 99
+}
+
+instr_cwde() {
+	args 0 || return 1
+	assemble 98
+}
+
+instr_daa() {
+	args 0 || return 1
+	assemble 27
+}
+
+instr_das() {
+	args 0 || return 1
+	assemble 2f
+}
+
+instr_xlat() {
+	args 0 || return 1
+	assemble d7
+}
+
+instr_ret() {
+	args 0 || args 1 || return 1
+	if [ -n "$1" ]
+	then
+		case "$1" in
+			$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
+				tohex "$1" 2 || return 1
+				assemble c2 $(endian $(num $1))
+				;;
+			*)
+				return 1
+				;;
+		esac
+	else
+		assemble c3
+	fi
+}
+
+instr_retf() {
+	args 0 || args 1 || return 1
+	if [ -n "$1" ]
+	then
+		case "$1" in
+			$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
+				tohex "$1" 2 || return 1
+				assemble ca $(endian $(num $1))
+				;;
+			*)
+				return 1
+				;;
+		esac
+	else
+		assemble cb
+	fi
 }
 
 instr_rol() {
@@ -357,11 +592,6 @@ instr_int() {
 			;;
 		*) return 1 ;;
 	esac
-}
-
-instr_cdq() {
-	args 0 || return 1
-	assemble 99
 }
 
 instr_add() {
