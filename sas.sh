@@ -164,8 +164,16 @@ num() {
 }
 
 endian() {
-	string="$@"
-	output_nl "$string" | run tr " " "\n" | run tac
+	string=" $@"
+	ret=""
+
+	while [ -n "$string" ]
+	do
+		ret="$ret${string##* } "
+		string="${string% *}"
+	done
+	ret="${ret% }"
+	output "$ret"
 }
 
 hexadd() {
