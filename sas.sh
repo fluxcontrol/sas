@@ -24,7 +24,12 @@ SAS_ARCH=${SAS_ARCH:-x86}
 SAS_INCODE="${SAS_INCODE:-}"
 SAS_INFILE="${SAS_INFILE:-}"
 
-SAS_ARCH_DIR="${SAS_ARCH_DIR:-$(command -p readlink -e $0 | sed s#$0\$#arch#)}"
+if [ -z "$SAS_ARCH_DIR" ]
+then
+	SAS_ARCH_DIR="${0%/*}"
+	[ -d "$SAS_ARCH_DIR" ] || SAS_ARCH_DIR="."
+	SAS_ARCH_DIR="${SAS_ARCH_DIR}/arch"
+fi
 
 
 # Don't change these unless you are prepared to deal with the consequences
