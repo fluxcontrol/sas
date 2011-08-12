@@ -27,8 +27,9 @@ SAS_INFILE="${SAS_INFILE:-}"
 SAS_ARCH_DIR="${SAS_ARCH_DIR:-$(command -p readlink -e $0 | sed s#$0\$#arch#)}"
 
 
-# Don't change this unless you are prepared to deal with the consequences
+# Don't change these unless you are prepared to deal with the consequences
 IFS=$(command -p printf "\n\t ")
+LC_COLLATE="C"
 
 
 ################################################################################
