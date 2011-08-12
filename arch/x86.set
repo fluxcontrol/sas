@@ -479,6 +479,7 @@ instr_push() {
 	case "$1" in
 		byte)
 			shift
+			tohex "$1" 1 || return 1
 			assemble 6a $(endian $(num "$1"))
 			return 0
 			;;
