@@ -4,6 +4,7 @@
 ### REGISTER DEFINITIONS
 ###   define register values, operand match sets, etc.
 ################################################################################
+# general purpose registers
 eax=0
  ax=0
  al=0
@@ -17,11 +18,13 @@ edx=2
  dx=2
  dl=2
 
+# high 8-bit general purpose registers
  ah=4
  bh=7
  ch=5
  dh=6
 
+# base/index registers
 esp=4
  sp=4
  sl=4
@@ -35,11 +38,11 @@ edi=7
  di=7
 dil=4
 
+# segment registers
 es=0
 cs=1
 ss=2
 ds=3
-
 fs=4
 gs=5
 
