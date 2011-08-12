@@ -166,14 +166,14 @@ tobytes() {
 
 tohex() {
 	num="$1"
-
 	case "$num" in
-		*d) output "${num%d}" | convert_dec_hex ;;
-		*b) output "${num%b}" | convert_bin_hex ;;
-		0x*) output "${num#0x}" ;;
-		*h) output "${num%h}" ;;
-		*[0-9a-f]) output "$num" ;;
+		*${dec}d) num=$(convert_dec_hex "${1%d}") ;;
+		*${bin}b) num=$(convert_bin_hex "${1%b}") ;;
+		 0x*$hex) num="${1#0x}" ;;
+		*${hex}h) num=$(strip_zero "${1%h}") ;;
+		   *$hex) num=$(output "$1") ;;
 	esac
+	output "$num"
 }
 
 num() {
