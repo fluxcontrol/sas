@@ -173,6 +173,7 @@ tohex() {
 		*${hex}h) num=$(strip_zero "${1%h}") ;;
 		   *$hex) num=$(output "$1") ;;
 	esac
+	[ "${#num}" -eq "${2:-${#num}}" ] || return 1
 	output "$num"
 }
 
