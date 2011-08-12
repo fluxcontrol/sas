@@ -130,7 +130,7 @@ convert_bin_hex() {
 # this is ugly, but avoids a call to sed '/\(..\)/\1 /g'
 # makes the program faster by about 0.04s (real),
 # which is roughly a 10% increase in speed
-convert_num2bytes() {
+tobytes() {
 	string=" $1"
 	count="$((${#1}/2))"
 	i="0"
@@ -143,24 +143,27 @@ convert_num2bytes() {
 		i="$(($i+1))"
 	done
 
-	output "$ret"
-}
-
-num() {
-	num="$1"
-
-	case "$num" in
-		*d) num=$(output "${num%d}" | convert_dec_hex) ;;
-		*b) num=$(output "${num%b}" | convert_bin_hex) ;;
-		0x*) num=$(output "${num#0x}") ;;
-		*h) num=$(output "${num%h}") ;;
-	esac
-
-	for byte in $(convert_num2bytes "$num")
+	for byte in "$ret"
 	do
 		[ "${#byte}" -eq 1 ] && byte="0$byte"
 		output "$byte "
 	done
+}
+
+tohex() {
+	num="$1"
+
+	case "$num" in
+		*d) output "${num%d}" | convert_dec_hex ;;
+		*b) output "${num%b}" | convert_bin_hex ;;
+		0x*) output "${num#0x}" ;;
+		*h) output "${num%h}" ;;
+		*[0-9a-f]) output "$num" ;;
+	esac
+}
+
+num() {
+	tobytes $(tohex "$1")
 }
 
 endian() {
