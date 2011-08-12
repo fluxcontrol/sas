@@ -32,6 +32,11 @@ IFS=$(command -p printf "\n\t ")
 LC_COLLATE="C"
 
 
+# used for matching numerical input types (hex is always used internally)
+hex="[0-9A-Fa-f]"
+dec="[0-9]"
+bin="[01]"
+
 ################################################################################
 ### CODE
 ###   this is the code that actually assembles the instructions
