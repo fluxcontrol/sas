@@ -267,7 +267,7 @@ exec_instr() {
 	op="$1"
 	shift
 	string="$@"
-	arguments=$(output "$string" | tr ',' ' ')
+	arguments=$(output "$string" | run tr ',' ' ')
 	
 	if [ -n "$op" ]
 	then
