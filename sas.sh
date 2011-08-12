@@ -170,7 +170,7 @@ tohex() {
 	esac
 	[ "$((${#num} % 2))" -eq 1 ] && num="0$num"
 	[ "$((${#num}/2))" -eq "${2:-$((${#num}/2))}" ] || return 1
-	output "$num"
+	[ -n "$2" ] || output "$num"
 }
 
 num() {
