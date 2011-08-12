@@ -115,7 +115,16 @@ convert_dec_hex() {
 }
 
 convert_bin_hex() {
+	string="$1"
+	i=1
 	ret=""
+	while [ "${#string}" -gt 0 ]
+	do
+		ret=$(($ret + i*${string#${string%?}}))
+		string="${string%?}"
+		i=$((i*2))
+	done
+	output_hex "$ret"
 }
 
 # this is ugly, but avoids a call to sed '/\(..\)/\1 /g'
