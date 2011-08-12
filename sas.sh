@@ -156,6 +156,7 @@ tobytes() {
 		string=" ${string##* ??}"
 		i="$(($i+1))"
 	done
+	output "$ret"
 }
 
 tohex() {
