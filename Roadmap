@@ -2,21 +2,28 @@
  * all mnemonics for x86, but only using registers (and possibly immediates)
 
 0.2
- * memory referencing for some mnemonics
- * better decoding/conversion/interpretation of numbers and number formats
+ * immediate operands for all relevant mnemonics
+ * memory referencing for all relevant mnemonics
 
 0.3
- * memory referencing for all mnemonics
+ * floating point
+ * later mnemonics (pentium, etc.)
+ * SIMD (sse, 3dnow!, etc.)
 
 0.4
- * source labels
- * assembler directives
+ * source labels and address calculations
+ * basic assembler directives
 
 0.5
- * macro programming
+ * MIPS chipset mnemonics
 
 0.6
  * ARM chipset mnemonics
 
 0.7
- * MIPS chipset mnemonics
+ * macro programming - as a plugin module; it will likely enlarge the core by a
+   substantial ammount, so making it an optional component may be
+   useful/necessary for embedded systems
+
+0.8
+ * Additional chipset mnemonics
