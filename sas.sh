@@ -127,6 +127,17 @@ strip_zero() {
 	output "$num"
 }
 
+pad() {
+	string="0"
+	[ "$#" -eq 3 ] && { string="$1"; shift; }
+	num="$2"
+	while [ "$((${#num}/2))" -lt "${1:-0}" ]
+	do
+		num="${string:-0}${num}"
+	done
+	output "$num"
+}
+
 convert_dec_hex() {
 	ret=$(output_hex $(strip_zero "$1"))
 	[ ${#ret} -eq 1 ] && ret="0$ret"
