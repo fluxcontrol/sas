@@ -1,0 +1,150 @@
+This document is meant for ISA set writers/implementors.
+It describes the internal functions/variables that are to be used in the
+various *.set files under arch/.
+
+Keep in mind the following points/requirements:
+
+* Correctness/accuracy BEFORE speed
+  This project is concerned far more with producing correct code while
+  achieving as high portability as possible. Speed is nice, but ensure correct
+  code production and portability first. Similarly, optimizations should not
+  cause regressions in speed or correctness.
+
+* Compact code is good; obfuscated is bad
+  There is a difficult balance between compact source and obfuscated source.
+  Try to achieve compactness using appropriate constructions (&& or || lists,
+  etc.), but don't overdo it. If it takes more than a minute to read the code
+  for a single instr_ function without comments, you're likely beyond simple
+  compactness and deep in the realm of obfuscation.
+
+* Registers
+  It is highly recommended that you define variables at the top of your ISA.set
+  file, one variable for each of the registers in your ISA, named the same as
+  in your ISA, with values that correspond to how those registers are encoded
+  into opcode values. This is of course ISA-dependent, so it may not make sense
+  to do so for some ISAs, but many of them encode registers in a logical and
+  consisten manner, so having variables for them will make your code far more
+  readable and less error-prone. You may also want to define register
+  pattern-match variables. See arch/x86.set as an example.
+
+* Keep variable use in calculations to a minimum
+  To limit memory consumption, no variables should be used, unless absolutely
+  necessary. It should be possible to implement everything needed using a
+  single variable, $sas_asm, or less (parameter substitution!). If you
+  absolutely cannot keep to this minimum, demonstrate the problem and the limit
+  can be expanded in as portable and minimal a way as possible.
+
+* Instruction/mnemonic implementations
+  All instructions are implemented by the normal mnemonic. All mnemonics are
+  implemented as shell functions whose names bear the "instr_" prefix.
+    Examples (from x86.set): instr_mov(), instr_call(), instr_ret()
+
+* Error conditions
+  Always return 1 on encountering an error. The caller (the core) will see this
+  and call invalid(), which will print an error message and exit with an error
+  code.
+
+The API itself is described below:
+
+Global Variables
+================
+$hex		--> expands to [0-9A-Za-z]; used in pattern matching contexts to test for
+		    a hexdecimal digit
+$dec		--> expands to [0-9]; used in pattern matching contexts to test for a
+		    decimal digit
+$bin		--> expands to [01]; used in pattern matching contexts to test for a
+		    binary digit
+$sas_asm	--> placeholder variable used for calculations done in the instruction
+		    implementations themselves
+$sas_pc		--> represents the "program counter"; the "address" of the
+		    current instruction to be assembled (eip in x86) -- unless
+		    you need to do something very tricky, you will probably
+		    never access/modify this variable directly
+
+Functions
+=========
+args		--> tests how many operands were provided as input to the
+		    current instruction; used to ensure that an instruction
+		    receives the correct number of operands, otherwise return
+		    error (return 1); does not "echo" anything, only returns a
+		    return value (return 0 or return 1)
+		      Example: args 2 || return 1 [return 1 if operands != 2]
+
+tohex		--> converts an number string to hexadecimal; handles different
+		    bases as follows:
+		        Nd -> decimal
+			Nb -> binary
+			Nh -> hexadecimal
+			0xN -> hexadecimal
+			N -> hexadecimal
+		      Example: tohex 16d [returns "10"]
+		    If passed a second argument which specifies required size
+		    in bytes, it doesn't "echo" anything, only returns a return
+		    value (return 0 or return 1)
+		      Example: tohex "$1" 4 || return 1 [return 1 if != dword]
+
+tobytes		--> converts a plain number string into a string of bytes,
+		    separated by spaces; does not perform number conversion on
+		    the input
+		      Example: tobytes deadc0de [returns "de ad c0 de"]
+
+hexadd		--> returns the sums of all its hexadecimal arguments
+		      Example: hexadd 1a 2b 3c [returns "81"]
+
+hexsub		--> returns the sums of all its hexadecimal arguments
+		      Example: hexadd 3c 0a 03 [returns "2f"]
+
+hexmult		--> returns the product of all its hexadecimal arguments
+		      Example: hexadd 1a 2b 3c [returns "010608"]
+
+hexdiv		--> returns the quotient of all its hexadecimal arguments
+		      Example: hexdiv 3c 0a 03 [returns "02"]
+
+num		--> wrapper function that performs tohex() followed by
+		    tobytes() on the input
+		      Example: num 512d [returns "02 00"]
+
+endian		--> swaps the endianness of the input string; expects input as
+		    a byte string (bytes separated by spaces)
+		      Example: endian "de ad c0 de" [returns "de c0 ad de"]
+
+get_lsb		--> returns the least significant byte in its argument,
+		    regardless of whether the argument is a raw hex number or
+		    byte stream
+		      Examples: get_lsb 12345678 [returns "78"]
+		                get_lsb "12 34 56 78" [returns "78"]
+
+get_msb		--> returns the most significant byte in its argument,
+		    regardless of whether the argument is a raw hex number or
+		    byte stream
+		      Examples: get_msb 12345678 [returns "12"]
+		                get_msb "12 34 56 78" [returns "12"]
+
+pad		--> pads its 2nd argument by the number of bytes in its 1st
+		    argument. If there are three arguments, the 1st argument
+		    specifies what to pad with, the 2nd is the number of times
+		    to pad, and the 3rd is the string to pad. The default pad
+		    is "0".
+		      Examples: pad 2 18 [returns "0018"]
+		                pad 90 4 18 [returns "90909018"]
+
+get_reg		--> for each name passed as an argument, returns the value of
+		    the same-named variable; this is meant to be used in
+		    conjunction with defining register names as variables in
+		    your ISA.set file, see arch/x86.set as an example
+		      Example: get_reg eax [returns the value of $eax]
+
+offset		--> calculates the PC-relative address using the offset in the
+		    1st argument, and optionally also the instruction length
+		    adjustment in the 2nd argument (to account for the length
+		    in bytes the current to-be-assembled instruction will take)
+		      Examples: offset 10 4 [returns "10 - ($sas_pc + 4)"]
+		                offset 0a [returns "0a - $sas_pc"]
+
+assemble	--> for each ascii-representation of a hexadecimal byte passed
+		    to this function, it will convert the ascii to the actual
+		    hexadecimal (i.e., machine code) and write it to
+		    $SAS_OUTPUT (supplied at the user level -- do NOT modify
+		    this variable in your ISA.set file!)
+		      Example: assemble c8 80
+
