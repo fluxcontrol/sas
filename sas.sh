@@ -265,7 +265,7 @@ decomment() {
 
 invalid() {
 	output_nl "error: unrecognized instruction: $@"
-	return 1
+	exit 1
 }
 
 exec_instr() {
