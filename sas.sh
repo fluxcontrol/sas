@@ -386,11 +386,6 @@ process_cmdline() {
 				shift 1
 				count=$((count+2))
 				;;
-			-d)
-				SAS_VERBOSE="1"
-				shift 1
-				count=$((count+1))
-				;;
 			-f)
 				SAS_INFILE="$2"
 				shift 2
@@ -415,6 +410,11 @@ process_cmdline() {
 				SAS_OUTPUT="$2"
 				shift 2
 				count=$((count+2))
+				;;
+			-v)
+				SAS_VERBOSE="1"
+				shift 1
+				count=$((count+1))
 				;;
 			*)
 				shift
