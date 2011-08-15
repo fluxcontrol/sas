@@ -61,6 +61,38 @@ instr_nop() {
 	assemble 90
 }
 
+instr_hlt() {
+	args 0 || return 1
+	assemble f4
+}
+
+instr_db() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(num "$1")
+		shift
+	done
+}
+
+instr_dw() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(endian $(tobytes $(pad 2 $(tohex "$1"))))
+		shift
+	done
+}
+
+instr_dd() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(endian $(tobytes $(pad 4 $(tohex "$1"))))
+		shift
+	done
+}
+
 #<<<<<<<<<<<<<<<<<<<<<<<<<
 # flags
 instr_sahf() {
