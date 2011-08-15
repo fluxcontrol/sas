@@ -214,11 +214,39 @@ hexadd() {
 	output "$ret"
 }
 
+hexsub() {
+	ret="$1"
+	[ -z "$ret" ] && return 1
+	shift
+	while [ "$#" -gt 0 ]
+	do
+		ret=$(output_hex $((0x$ret - 0x$1)))
+		shift
+	done
+	[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
+	output "$ret"
+}
+
 hexmult() {
-	ret="1"
+	ret="$1"
+	[ -z "$ret" ] && return 1
+	shift
 	while [ "$#" -gt 0 ]
 	do
 		ret=$(output_hex $((0x$ret * 0x$1)))
+		shift
+	done
+	[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
+	output "$ret"
+}
+
+hexdiv() {
+	ret="$1"
+	[ -z "$ret" ] && return 1
+	shift
+	while [ "$#" -gt 0 ]
+	do
+		ret=$(output_hex $((0x$ret / 0x$1)))
 		shift
 	done
 	[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
