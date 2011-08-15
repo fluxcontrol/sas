@@ -264,6 +264,24 @@ get_reg() {
 	done
 }
 
+get_lsb() {
+	ret="$1"
+	if [ "${#ret}" -gt 2 ]
+	then
+		[ -n "${ret#${ret%% *}}" ] || ret=$(tobytes "$ret")
+	fi
+	output "${ret##* }"
+}
+
+get_msb() {
+	ret="$1"
+	if [ "${#ret}" -gt 2 ]
+	then
+		[ -n "${ret#${ret%% *}}" ] || ret=$(tobytes "$ret")
+	fi
+	output "${ret%% *}"
+}
+
 assemble() {
 	if [ "$SAS_VERBOSE" -eq 1 ]
 	then
