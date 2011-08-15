@@ -297,14 +297,14 @@ assemble() {
 	if [ "$SAS_VERBOSE" -eq 1 ]
 	then
 		string="$@"
-		output "assemble: $sas_pc: <$string> "
+		output "assemble: $(pad 4 $sas_pc): <$string> "
 	fi
 
 	for byte in $@
 	do
 		run printf "\x$byte" >> "$SAS_OUTPUT" ||
 			return 1
-		sas_pc=$(pad 4 $(tohex "$((0x$sas_pc + 0x1))d"))
+		sas_pc=$(tohex "$((0x$sas_pc + 0x1))d")
 	done
 
 	[ "$SAS_VERBOSE" -eq 1 ] && output_nl
