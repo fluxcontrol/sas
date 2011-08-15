@@ -255,6 +255,10 @@ hexdiv() {
 	output "$ret"
 }
 
+offset() {
+	hexsub $(tohex "$1") $(hexadd $sas_pc "$2")
+}
+
 get_reg() {
 	ret=""
 	while [ "$#" -gt 0 ]
