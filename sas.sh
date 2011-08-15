@@ -45,6 +45,10 @@ bin="[01]"
 # program counter
 sas_pc=0
 
+# reserved for any necessary calculations in the ISA.set files that can't be
+# handled directly by parameter substitution using core functions
+sas_asm=""
+
 ################################################################################
 ### CODE
 ###   this is the code that actually assembles the instructions
