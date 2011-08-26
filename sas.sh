@@ -170,6 +170,17 @@ convert_bin_hex() {
 	output_hex "$ret"
 }
 
+tobin() {
+	num=$(output "$((0x$1))")
+	ret=""
+	while [ "$num" -gt 0 ]
+	do
+		ret="$(($num % 2))$ret"
+		num="$(($num / 2))"
+	done
+	output "$ret"
+}
+
 # this is ugly, but avoids a call to sed '/\(..\)/\1 /g'
 # makes the program faster by about 0.04s (real),
 # which is roughly a 10% increase in speed
