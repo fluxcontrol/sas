@@ -20,6 +20,7 @@
 SAS_OUTPUT="${SAS_OUTPUT:-/dev/stdout}"
 
 SAS_VERBOSE=${SAS_VERBOSE:-0}
+SAS_ENDIAN="${SAS_ENDIAN:-0}"
 SAS_ARCH=${SAS_ARCH:-x86}
 SAS_INCODE="${SAS_INCODE:-}"
 SAS_INFILE="${SAS_INFILE:-}"
@@ -88,6 +89,11 @@ OPTIONS:
 		either a source file or STDIN is required. This option
 		overrides later options (including the bare <ASM>, <FILE>, or
 		<STDIN> inputs).
+
+	-e
+		Flip the endianness of the assembled output. This is useful for
+		ISAs that can be either big-endian or little-endian, such as
+		MIPS.
 
 	-f INPUT_FILE
 		Assemble the instructions found in file INPUT_FILE. This option
@@ -294,13 +300,13 @@ get_msb() {
 }
 
 assemble() {
-	if [ "$SAS_VERBOSE" -eq 1 ]
-	then
-		string="$@"
-		output "assemble: $(pad 4 $sas_pc): <$string> "
-	fi
+	string="$@"
+	[ "$SAS_ENDIAN" -eq 1 ] && string=$(endian "$string")
 
-	for byte in $@
+	[ "$SAS_VERBOSE" -eq 1 ] &&
+		output "assemble: $(pad 4 $sas_pc): <$string> "
+
+	for byte in $string
 	do
 		run printf "\x$byte" >> "$SAS_OUTPUT" ||
 			return 1
@@ -385,6 +391,11 @@ process_cmdline() {
 				SAS_INCODE="$@"
 				shift 1
 				count=$((count+2))
+				;;
+			-e)
+				SAS_ENDIAN="1"
+				shift 1
+				count=$((count+1))
 				;;
 			-f)
 				SAS_INFILE="$2"
