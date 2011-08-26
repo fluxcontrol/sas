@@ -112,7 +112,11 @@ OPTIONS:
 		Write the assembled opcodes to file OUTPUT_FILE. By default,
 		output is written to STDOUT. You could also leave this option
 		unspecified and redirect STDOUT to a file to achieve the same
-		effect.
+		effect. If OUTPUT_FILE already exists, it will overwrite the
+		file (cf. -O below).
+
+	-O OUTPUT_FILE
+		Same as -o, but appends to OUTPUT_FILE if it already exists.
 
 	-v
 		Verbose output: prints some diagnostic messages on what is
@@ -429,6 +433,12 @@ process_cmdline() {
 				count=$((count+2))
 				;;
 			-o)
+				SAS_OUTPUT="$2"
+				output "" > "$SAS_OUTPUT"
+				shift 2
+				count=$((count+2))
+				;;
+			-O)
 				SAS_OUTPUT="$2"
 				shift 2
 				count=$((count+2))
