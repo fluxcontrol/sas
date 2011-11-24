@@ -145,14 +145,17 @@ strip_zero() {
 }
 
 pad() {
-	string="0"
-	[ "$#" -eq 3 ] && { string="$1"; shift; }
-	num="$2"
-	while [ "$((${#num}/2))" -lt "${1:-0}" ]
+	string=1
+	[ "$1" = "-b" ] && { string=2; shift; }
+	num="0"
+	[ "$#" -eq 3 ] && { num="$1"; shift; }
+	ret="$2"
+	string=$((${1:-0} * string))
+	while [ "${#ret}" -lt "${string}" ]
 	do
-		num="${string:-0}${num}"
+		ret="${num}${ret}"
 	done
-	output "$num"
+	output "$ret"
 }
 
 convert_dec_hex() {
@@ -317,7 +320,7 @@ assemble() {
 	[ "$SAS_ENDIAN" -eq 1 ] && string=$(endian "$string")
 
 	[ "$SAS_VERBOSE" -eq 1 ] &&
-		output "assemble: $(pad 4 $sas_pc): <$string> "
+		output "assemble: $(pad -b 4 $sas_pc): <$string> "
 
 	for byte in $string
 	do
