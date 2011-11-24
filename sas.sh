@@ -42,6 +42,7 @@ LC_COLLATE="C"
 hex="[0-9A-Fa-f]"
 dec="[0-9]"
 bin="[01]"
+mref="\[*\]"
 
 # program counter
 sas_pc=0
@@ -337,6 +338,13 @@ assemble() {
 args() {
 	[ $(array_count "$arguments") -ne "$1" ] && return 1
 	return 0
+}
+
+memref() {
+	ret="${1#?}"
+	ret="${ret%?}"
+	[ "[$ret]" != "$1" ] && return 1
+	output "$ret"
 }
 
 decomment() {
