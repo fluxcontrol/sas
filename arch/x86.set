@@ -56,16 +56,6 @@ reg8="?[hl]"
 ###   the "standard" x86 intel instruction mnemonics (yes, intel syntax, no
 ###   gas)
 ################################################################################
-instr_nop() {
-	args 0 || return 1
-	assemble 90
-}
-
-instr_hlt() {
-	args 0 || return 1
-	assemble f4
-}
-
 instr_db() {
 	args 0 && return 1
 	while [ -n "$1" ]
@@ -79,7 +69,7 @@ instr_dw() {
 	args 0 && return 1
 	while [ -n "$1" ]
 	do
-		assemble $(endian $(tobytes $(pad 2 $(tohex "$1"))))
+		assemble $(endian $(tobytes $(pad -b 2 $(tohex "$1"))))
 		shift
 	done
 }
@@ -88,10 +78,32 @@ instr_dd() {
 	args 0 && return 1
 	while [ -n "$1" ]
 	do
-		assemble $(endian $(tobytes $(pad 4 $(tohex "$1"))))
+		assemble $(endian $(tobytes $(pad -b 4 $(tohex "$1"))))
 		shift
 	done
 }
+
+instr_dq() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(endian $(tobytes $(pad -b 8 $(tohex "$1"))))
+		shift
+	done
+}
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# nop/hlt
+instr_nop() {
+	args 0 || return 1
+	assemble 90
+}
+
+instr_hlt() {
+	args 0 || return 1
+	assemble f4
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<
 # flag operations
@@ -243,102 +255,87 @@ instr_repne() {
 
 instr_loop() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || return 1
-			assemble e2 $(get_lsb $(offset $1 02)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	assemble e2 $(get_lsb $(offset $1 02))
 }
 
 instr_loopz() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || return 1
-			assemble e1 $(get_lsb $(offset $1 02)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	assemble e1 $(get_lsb $(offset $1 02))
 }
 
 instr_loopnz() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || return 1
-			assemble e0 $(get_lsb $(offset $1 02)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	assemble e0 $(get_lsb $(offset $1 02))
 }
 
 instr_loope() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || return 1
-			assemble e1 $(get_lsb $(offset $1 02)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	assemble e1 $(get_lsb $(offset $1 02))
 }
 
 instr_loopne() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || return 1
-			assemble e0 $(get_lsb $(offset $1 02)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	assemble e0 $(get_lsb $(offset $1 02))
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<
-# push pop
+# stack operations
 instr_push() {
-	case "$1" in
-		byte)
-			shift
-			tohex "$1" 1 || return 1
-			assemble 6a $(endian $(num "$1"))
-			return 0
-			;;
-		word)
-			shift
-			tohex "$1" 2 || return 1
-			assemble 66 68 $(endian $(num "$1"))
-			return 0
-			;;
-	esac
+	check_type "$1" "byte" &&
+		shift &&
+		tohex "$1" 1 &&
+		assemble 6a $(endian $(num "$1")) &&
+		return 0
+	check_type "$1" "word" &&
+		shift &&
+		tohex "$1" 2 &&
+		assemble 66 68 $(endian $(num "$1")) &&
+		return 0
 
 	args 1 || return 1
-	case "$1" in
-		es) assemble 06 ;;
-		cs) assemble 0e ;;
-		ss) assemble 16 ;;
-		ds) assemble 1e ;;
+	check_type "$1" "es" && assemble 06 && return 0
+	check_type "$1" "cs" && assemble 0e && return 0
+	check_type "$1" "ss" && assemble 16 && return 0
+	check_type "$1" "ds" && assemble 1e && return 0
 
-		$reg32) assemble $(hexadd 50 $(get_reg $1)) ;;
-		$reg16) assemble 66 $(hexadd 50 $(get_reg $1)) ;;
-		$reg8) return 1 ;;
-		*)
-			tohex "$1" 4 || return 1
-			assemble 68 $(endian $(num "$1"))
-			;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble $(hexadd 50 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 $(hexadd 50 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		return 1
+
+	tohex "$1" 4 || return 1
+	assemble 68 $(endian $(num "$1"))
 }
 
 instr_pop() {
 	args 1 || return 1
-	case "$1" in
-		es) assemble 06 ;;
-		cs) assemble 0e ;;
-		ss) assemble 16 ;;
-		ds) assemble 1e ;;
+	check_type "$1" "es" && assemble 06 && return 0
+	check_type "$1" "cs" && assemble 0e && return 0
+	check_type "$1" "ss" && assemble 16 && return 0
+	check_type "$1" "ds" && assemble 1e && return 0
 
-		$reg32) assemble $(hexadd 58 $(get_reg $1)) ;;
-		$reg16) assemble 66 $(hexadd 58 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble $(hexadd 58 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 $(hexadd 58 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_pusha() {
@@ -442,30 +439,28 @@ instr_cwde() {
 # calls, returns, interrupts
 instr_call() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble ff $(hexadd d0 $(get_reg $1)) ;;
-		$reg16) assemble 66 ff $(hexadd d0 $(get_reg $1)) ;;
-		$reg8) return 1 ;;
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble e8 $(endian $(tobytes $(pad 4 $(offset "$1" 05)))) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble ff $(hexadd d0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 ff $(hexadd d0 $(get_reg $1)) &&
+		return 0
+	check_type $(memref "$1") "$reg32" &&
+		assemble ff $(hexadd 10 $(get_reg $(memref $1))) &&
+		return 0
+	check_type "$1" "$reg8" && return 1
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 2 || tohex "$1" 4 || return 1
+	assemble e8 $(endian $(tobytes $(pad -b 4 $(offset "$1" 05))))
 }
 
 instr_ret() {
 	args 0 || args 1 || return 1
 	if [ -n "$1" ]
 	then
-		case "$1" in
-			$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-				tohex "$1" 2 || return 1
-				assemble c2 $(endian $(num $1))
-				;;
-			*)
-				return 1
-				;;
-		esac
+		check_type "$1" "$imm" || return 1
+		tohex "$1" 2 || return 1
+		assemble c2 $(endian $(num $1))
 	else
 		assemble c3
 	fi
@@ -475,15 +470,9 @@ instr_retn() {
 	args 0 || args 1 || return 1
 	if [ -n "$1" ]
 	then
-		case "$1" in
-			$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-				tohex "$1" 2 || return 1
-				assemble c2 $(endian $(num $1))
-				;;
-			*)
-				return 1
-				;;
-		esac
+		check_type "$1" "$imm" || return 1
+		tohex "$1" 2 || return 1
+		assemble c2 $(endian $(num $1))
 	else
 		assemble c3
 	fi
@@ -493,15 +482,9 @@ instr_retf() {
 	args 0 || args 1 || return 1
 	if [ -n "$1" ]
 	then
-		case "$1" in
-			$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-				tohex "$1" 2 || return 1
-				assemble ca $(endian $(num $1))
-				;;
-			*)
-				return 1
-				;;
-		esac
+		check_type "$1" "$imm" || return 1
+		tohex "$1" 2 || return 1
+		assemble ca $(endian $(num $1))
 	else
 		assemble cb
 	fi
@@ -509,14 +492,10 @@ instr_retf() {
 
 instr_int() {
 	args 1 || return 1
-	case "$1" in
-		3) assemble cc ;;
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || return 1
-			assemble cd $(num "$1")
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "3" && assemble cc && return 0
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	assemble cd $(num "$1")
 }
 
 instr_into() {
@@ -536,18 +515,11 @@ instr_iretd() {
 
 instr_enter() {
 	args 2 || return 1
-	case "$2" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$2" 1 || return 1
-			case "$1" in
-				$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-					tohex "$2" 1 || tohex "$2" 2 || return 1
-					assemble c8 $(endian $(tobytes $(pad 2 $(tohex "$1")))) $(num "$2") ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$imm" || return 1
+	tohex "$2" 1 || return 1
+	check_type "$1" "$imm" || return 1
+	tohex "$2" 1 || tohex "$2" 2 || return 1
+	assemble c8 $(endian $(tobytes $(pad -b 2 $(tohex "$1")))) $(num "$2")
 }
 
 instr_leave() {
@@ -560,257 +532,300 @@ instr_leave() {
 # binary algebra
 instr_not() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble f7 $(hexadd d0 $(get_reg $1)) ;;
-		$reg16) assemble 66 f7 $(hexadd d0 $(get_reg $1)) ;;
-		$reg8) assemble f6 $(hexadd d0 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble f7 $(hexadd d0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 f7 $(hexadd d0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble f6 $(hexadd d0 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_neg() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble f7 $(hexadd d8 $(get_reg $1)) ;;
-		$reg16) assemble 66 f7 $(hexadd d8 $(get_reg $1)) ;;
-		$reg8) assemble f6 $(hexadd d8 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble f7 $(hexadd d8 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 f7 $(hexadd d8 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble f6 $(hexadd d8 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_and() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 21 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 21 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 20 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+			check_type "$1" "$reg32" &&
+				assemble 21 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+				return 0
+			check_type $(memref "$1") "$reg32" &&
+				assemble 21 $(hexadd $(get_reg $(memref $1)) $(hexmult 8 $(get_reg $2))) &&
+				return 0
+	check_type "$2" "$reg16" &&
+			check_type "$1" "$reg16" &&
+				assemble 66 21 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+				return 0
+	check_type "$2" "$reg8" &&
+			check_type "$1" "$reg8" &&
+				assemble 20 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+				return 0
+	return 1
 }
 
 instr_or() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 09 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 09 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 08 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+			check_type "$1" "$reg32" &&
+			assemble 09 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+			check_type "$1" "$reg16" &&
+			assemble 66 09 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+			check_type "$1" "$reg8" &&
+			assemble 08 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_xor() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 31 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 31 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 30 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+			check_type "$1" "$reg32" &&
+			assemble 31 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+			check_type "$1" "$reg16" &&
+			assemble 66 31 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+			check_type "$1" "$reg8" &&
+			assemble 30 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_rol() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd c0 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd c0 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd c0 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+			check_type "$1" "$reg32" &&
+				assemble d1 $(hexadd c0 $(get_reg $1)) &&
+				return 0
+			check_type "$1" "$reg16" &&
+				assemble 66 d1 $(hexadd c0 $(get_reg $1)) &&
+				return 0
+			check_type "$1" "$reg8"  &&
+				assemble d0 $(hexadd c0 $(get_reg $1)) &&
+				return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd c0 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd c0 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd c0 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+			check_type "$1" "$reg32" &&
+				assemble c1 $(hexadd c0 $(get_reg $1)) $(num $2) &&
+				return 0
+			check_type "$1" "$reg16" &&
+				assemble 66 c1 $(hexadd c0 $(get_reg $1)) $(num $2) &&
+				return 0
+			check_type "$1" "$reg8"  &&
+				assemble c0 $(hexadd c0 $(get_reg $1)) $(num $2) &&
+				return 0
 	fi
+	return 1
 }
 
 instr_ror() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd c8 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd c8 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd c8 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd c8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd c8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd c8 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd c8 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd c8 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd c8 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd c8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd c8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd c8 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 
 instr_rcl() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd d0 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd d0 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd d0 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd d0 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd d0 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd d0 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd d0 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd d0 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd d0 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd d0 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd d0 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd d0 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 
 instr_rcr() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd d8 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd d8 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd d8 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd d8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd d8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd d8 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd d8 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd d8 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd d8 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd d8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd d8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd d8 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 
 instr_shl() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd e0 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd e0 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd e0 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd e0 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd e0 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd e0 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd e0 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd e0 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd e0 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 
 instr_shr() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd e8 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd e8 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd e8 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd e8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd e8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd e8 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd e8 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd e8 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd e8 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd e8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd e8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd e8 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 
 instr_sal() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd e0 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd e0 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd e0 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd e0 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd e0 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd e0 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd e0 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd e0 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd e0 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd e0 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 
 instr_sar() {
 	args 2 || return 1
 	if [ "$2" = "1" ]
 	then
-		case "$1" in
-			$reg32) assemble d1 $(hexadd f8 $(get_reg $1)) ;;
-			$reg16) assemble 66 d1 $(hexadd f8 $(get_reg $1)) ;;
-			$reg8) assemble d0 $(hexadd f8 $(get_reg $1)) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble d1 $(hexadd f8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 d1 $(hexadd f8 $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble d0 $(hexadd f8 $(get_reg $1)) &&
+			return 0
 	else
-		case "$1" in
-			$reg32) assemble c1 $(hexadd f8 $(get_reg $1)) $(num $2) ;;
-			$reg16) assemble 66 c1 $(hexadd f8 $(get_reg $1)) $(num $2) ;;
-			$reg8) assemble c0 $(hexadd f8 $(get_reg $1)) $(num $2) ;;
-			*) return 1 ;;
-		esac
+		check_type "$1" "$reg32" &&
+			assemble c1 $(hexadd f8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 c1 $(hexadd f8 $(get_reg $1)) $(num $2) &&
+			return 0
+		check_type "$1" "$reg8" &&
+			assemble c0 $(hexadd f8 $(get_reg $1)) $(num $2) &&
+			return 0
 	fi
+	return 1
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -843,31 +858,35 @@ instr_mov() {
 
 instr_xchg() {
 	args 2 || return 1
-	case "$2" in
-		eax) assemble $(hexadd 90 $(get_reg $1)) ;;
-		$reg32)
-			case "$1" in
-				eax) assemble $(hexadd 90 $(get_reg $2)) ;;
-				$reg32) assemble 87 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		ax) assemble 66 $(hexadd 90 $(get_reg $1)) ;;
-		$reg16)
-			case "$1" in
-				ax) assemble 66 $(hexadd 90 $(get_reg $2)) ;;
-				$reg16) assemble 66 87 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 86 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "eax" &&
+		assemble $(hexadd 90 $(get_reg $1)) &&
+		return 0
+	if check_type "$2" "$reg32"
+	then
+		check_type "$1" "eax" &&
+			assemble $(hexadd 90 $(get_reg $2)) &&
+			return 0
+		check_type "$1" "$reg32" &&
+			assemble 87 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) &&
+			return 0
+	fi
+	check_type "$2" "ax" &&
+		assemble 66 $(hexadd 90 $(get_reg $1)) &&
+		return 0
+	if check_type "$2" "$reg16"
+	then
+		check_type "$1" "ax" &&
+			assemble 66 $(hexadd 90 $(get_reg $2)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 87 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) &&
+			return 0
+	fi
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 86 $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) &&
+			return 0
+	return 1
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -875,60 +894,58 @@ instr_xchg() {
 # input/output
 instr_in() {
 	args 2 || return 1
-	case "$2" in
-		dx)
-			case "$1" in
-				eax) assemble ed ;;
-				ax) assemble 66 ed ;;
-				al) assemble ec ;;
-				*) return 1 ;;
-			esac
-			;;
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$2" 1 || return 1
-			case "$1" in
-				eax) assemble e5 $(num "$2") ;;
-				ax) assemble 66 e5 $(num "$2") ;;
-				al) assemble e4 $(num "$2") ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	if check_type "$2" "dx"
+	then
+		check_type "$1" "eax" &&
+			assemble ed &&
+			return 0
+		check_type "$1" "ax" &&
+			assemble 66 ed &&
+			return 0
+		check_type "$1" "al" &&
+			assemble ec &&
+			return 0
+	fi
+	check_type "$2" "$imm" || return 1
+	tohex "$2" 1 || return 1
+	check_type "$1" "eax" &&
+		assemble e5 $(num "$2") &&
+		return 0
+	check_type "$1" "ax" &&
+		assemble 66 e5 $(num "$2") &&
+		return 0
+	check_type "$1" "al" &&
+		assemble e4 $(num "$2") &&
+		return 0
+	return 1
 }
 
 instr_out() {
 	args 2 || return 1
-	case "$2" in
-		eax)
-			case "$1" in
-				dx) assemble ef ;;
-				$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-					tohex "$1" 1 || return 1
-					assemble e7 $(num "$1") ;;
-				*) return 1 ;;
-			esac
-			;;
-		ax)
-			case "$1" in
-				dx) assemble ef ;;
-				$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-					tohex "$1" 1 || return 1
-					assemble 66 e7 $(num "$1") ;;
-				*) return 1 ;;
-			esac
-			;;
-		al)
-			case "$1" in
-				dx) assemble ee ;;
-				$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-					tohex "$1" 1 || return 1
-					assemble e6 $(num "$1") ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "dx"
+	then
+		check_type "$2" "eax" &&
+			assemble ef &&
+			return 0
+		check_type "$2" "ax" &&
+			assemble ef &&
+			return 0
+		check_type "$2" "al" &&
+			assemble ee &&
+			return 0
+	fi
+	check_type "$1" "$imm" || return 1
+	tohex "$1" 1 || return 1
+	check_type "$2" "eax" &&
+		assemble e7 $(num "$1") &&
+		return 0
+	check_type "$2" "ax" &&
+		assemble 66 e7 $(num "$1") &&
+		return 0
+	check_type "$2" "al" &&
+		assemble e6 $(num "$1") &&
+		return 0
+	return 1
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -936,163 +953,155 @@ instr_out() {
 # integer algebra
 instr_add() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 01 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 01 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 00 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+		check_type "$1" "$reg32" &&
+			assemble 01 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+		check_type "$1" "$reg16" &&
+			assemble 66 01 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 00 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_sub() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 29 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 29 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 28 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+		check_type "$1" "$reg32" &&
+			assemble 29 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+		check_type "$1" "$reg16" &&
+			assemble 66 29 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 28 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_adc() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 11 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 11 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 10 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+		check_type "$1" "$reg32" &&
+			assemble 11 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+		check_type "$1" "$reg16" &&
+			assemble 66 11 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 10 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_sbb() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 19 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 19 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 18 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+		check_type "$1" "$reg32" &&
+			assemble 19 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+		check_type "$1" "$reg16" &&
+			assemble 66 19 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 18 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_mul() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble f7 $(hexadd e0 $(get_reg $1)) ;;
-		$reg16) assemble 66 f7 $(hexadd e0 $(get_reg $1)) ;;
-		$reg8) assemble f6 $(hexadd e0 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble f7 $(hexadd e0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 f7 $(hexadd e0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble f6 $(hexadd e0 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_div() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble f7 $(hexadd f0 $(get_reg $1)) ;;
-		$reg16) assemble 66 f7 $(hexadd f0 $(get_reg $1)) ;;
-		$reg8) assemble f6 $(hexadd f0 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble f7 $(hexadd f0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 f7 $(hexadd f0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble f6 $(hexadd f0 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 
 instr_imul() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble f7 $(hexadd e8 $(get_reg $1)) ;;
-		$reg16) assemble 66 f7 $(hexadd e8 $(get_reg $1)) ;;
-		$reg8) assemble f6 $(hexadd e8 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble f7 $(hexadd e8 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 f7 $(hexadd e8 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble f6 $(hexadd e8 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_idiv() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble f7 $(hexadd f8 $(get_reg $1)) ;;
-		$reg16) assemble 66 f7 $(hexadd f8 $(get_reg $1)) ;;
-		$reg8) assemble f6 $(hexadd f8 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble f7 $(hexadd f8 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 f7 $(hexadd f8 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble f6 $(hexadd f8 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_inc() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble $(hexadd 40 $(get_reg $1)) ;;
-		$reg16) assemble 66 $(hexadd 40 $(get_reg $1)) ;;
-		$reg8) assemble fe $(hexadd c0 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble $(hexadd 40 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 $(hexadd 40 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble fe $(hexadd c0 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_dec() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble $(hexadd 48 $(get_reg $1)) ;;
-		$reg16) assemble 66 $(hexadd 48 $(get_reg $1)) ;;
-		$reg8) assemble fe $(hexadd c8 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble $(hexadd 48 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 $(hexadd 48 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg8" &&
+		assemble fe $(hexadd c8 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -1100,52 +1109,36 @@ instr_dec() {
 # tests and comparisons
 instr_cmp() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 39 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 39 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 38 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+		check_type "$1" "$reg32" &&
+			assemble 39 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+		check_type "$1" "$reg16" &&
+			assemble 66 39 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 38 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 
 instr_test() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 85 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 85 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 84 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	check_type "$2" "$reg32" &&
+		check_type "$1" "$reg32" &&
+			assemble 85 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg16" &&
+		check_type "$1" "$reg16" &&
+			assemble 66 85 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	check_type "$2" "$reg8" &&
+		check_type "$1" "$reg8" &&
+			assemble 84 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+	return 1
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -1153,331 +1146,365 @@ instr_test() {
 # jumps
 instr_jmp() {
 	args 1 || return 1
-	case "$1" in
-		$reg32) assemble ff $(hexadd e0 $(get_reg $1)) ;;
-		$reg16) assemble 66 ff $(hexadd e0 $(get_reg $1)) ;;
-		*) return 1 ;;
-	esac
+	check_type "$1" "$reg32" &&
+		assemble ff $(hexadd e0 $(get_reg $1)) &&
+		return 0
+	check_type "$1" "$reg16" &&
+		assemble 66 ff $(hexadd e0 $(get_reg $1)) &&
+		return 0
+	return 1
 }
 
 instr_jcxz() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || tohex "$1" 2 || return 1
-			assemble 67 e3 $(get_lsb $(offset $1 03)) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 1 || tohex "$1" 2 || return 1
+		assemble 67 e3 $(get_lsb $(offset $1 03))
+		return 0
+	fi
+	return 1
 }
 
 instr_jecxz() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 1 || tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble e3 $(get_lsb $(offset $1 02)) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 1 || tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble e3 $(get_lsb $(offset $1 02))
+		return 0
+	fi
+	return 1
 }
 
 instr_jz() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 84 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 84 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnz() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 85 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 85 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jc() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 82 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 82 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnc() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 83 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 83 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jo() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 80 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 80 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jno() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 81 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 81 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jp() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8a $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8a $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnp() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8b $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8b $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jpe() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8a $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8a $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jpo() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8b $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8b $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_js() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 88 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 88 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jns() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 89 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 89 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_je() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 84 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 84 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jne() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 85 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 85 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_ja() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 87 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 87 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jna() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 86 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 86 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jae() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 83 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 83 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnae() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 82 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 82 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jb() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 82 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 82 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnb() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 83 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 83 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jbe() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 86 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 86 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnbe() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 87 $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 87 $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jg() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8f $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8f $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jng() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8e $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8e $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jge() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8d $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8d $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnge() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8c $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8c $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jl() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8c $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8c $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnl() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8d $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8d $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jle() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8e $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8e $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 
 instr_jnle() {
 	args 1 || return 1
-	case "$1" in
-		$hex*|0x$hex*|$hex*h|$bin*b|$dec*d)
-			tohex "$1" 2 || tohex "$1" 4 || return 1
-			assemble 0f 8f $(endian $(tobytes $(pad 4 $(offset "$1" 06)))) ;;
-		*) return 1 ;;
-	esac
+	if check_type "$1" "$imm"
+	then
+		tohex "$1" 2 || tohex "$1" 4 || return 1
+		assemble 0f 8f $(endian $(tobytes $(pad -b 4 $(offset "$1" 06))))
+		return 0
+	fi
+	return 1
 }
 #>>>>>>>>>>>>>>>>>>>>>>>>>
 

@@ -42,6 +42,7 @@ LC_COLLATE="C"
 hex="[0-9A-Fa-f]"
 dec="[0-9]"
 bin="[01]"
+imm="*$dec 0x$hex* $hex*h $bin*b"
 mref="\[*\]"
 
 # program counter
@@ -338,6 +339,16 @@ assemble() {
 args() {
 	[ $(array_count "$arguments") -ne "$1" ] && return 1
 	return 0
+}
+
+check_type() {
+	string="$2 "
+	while [ -n "$string" ]; do
+		ret="${string%% *}"
+		case "$1" in $ret) return 0; string="" ;; esac
+		string="${string#* }"
+	done
+	return 1
 }
 
 memref() {
