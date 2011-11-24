@@ -203,17 +203,15 @@ tobytes() {
 }
 
 tohex() {
-	num="$1"
-	case "$num" in
-		*${dec}d) num=$(convert_dec_hex "${1%d}") ;;
+	case "$1" in
 		*${bin}b) num=$(convert_bin_hex "${1%b}") ;;
 		 0x*$hex) num="${1#0x}" ;;
 		*${hex}h) num=$(strip_zero "${1%h}") ;;
-		   *$hex) num=$(output "$1") ;;
+		*${dec}) num=$(convert_dec_hex "$1") ;;
 	esac
+	[ -z "$2" ] && output "$num" && return 0
 	[ "$((${#num} % 2))" -eq 1 ] && num="0$num"
 	[ "$((${#num}/2))" -eq "${2:-$((${#num}/2))}" ] || return 1
-	[ -n "$2" ] || output "$num"
 }
 
 num() {
@@ -325,7 +323,7 @@ assemble() {
 	do
 		run printf "\x$byte" >> "$SAS_OUTPUT" ||
 			return 1
-		sas_pc=$(tohex "$((0x$sas_pc + 0x1))d")
+		sas_pc=$(tohex "$((0x$sas_pc + 0x1))")
 	done
 
 	[ "$SAS_VERBOSE" -eq 1 ] && output_nl
