@@ -340,6 +340,23 @@ args() {
 	return 0
 }
 
+substr() {
+	ret="${2%%$1*}"
+	num="${2#*$1}"
+	[ "$ret$1$num" != "$2" ] && return 1
+	return 0
+}
+
+replace() {
+	[ "$#" -eq 3 ] || return 1
+	ret="$1"
+	while $(substr "$2" "$ret")
+	do
+		ret="${ret%%$2*}$3${ret#*$2}"
+	done
+	output "$ret"
+}
+
 check_type() {
 	string="$2 "
 	while [ -n "$string" ]; do
@@ -387,7 +404,7 @@ exec_instr() {
 	op="$1"
 	shift
 	string="$@"
-	arguments=$(output "$string" | run tr ',' ' ')
+	arguments=$(replace "$string" ',' ' ')
 	
 	if [ -n "$op" ]
 	then
