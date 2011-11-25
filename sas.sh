@@ -129,12 +129,12 @@ EOF
 }
 
 array_count() {
-	count=0
+	ret=0
 	for i in $@
 	do
-		count=$((count+1))
+		ret=$((ret+1))
 	done
-	output "$count"
+	output "$ret"
 }
 
 strip_zero() {
@@ -167,13 +167,13 @@ convert_dec_hex() {
 }
 
 convert_bin_hex() {
-	string=$(strip_zero "$1")
+	num=$(strip_zero "$1")
 	i=1
 	ret=""
-	while [ "${#string}" -gt 0 ]
+	while [ "${#num}" -gt 0 ]
 	do
-		ret=$(($ret + i*${string#${string%?}}))
-		string="${string%?}"
+		ret=$(($ret + i*${num#${num%?}}))
+		num="${num%?}"
 		i=$((i*2))
 	done
 	output_hex "$ret"
@@ -190,18 +190,14 @@ tobin() {
 	output "$ret"
 }
 
-# this is ugly, but avoids a call to sed '/\(..\)/\1 /g'
-# makes the program faster by about 0.04s (real),
-# which is roughly a 10% increase in speed
 tobytes() {
-	string=" $1"
-	count="$((${#1}/2))"
+	num=" $1"
 	i="0"
 	ret=""
-	while [ "$i" -lt "$count" ]
+	while [ "$i" -lt "$((${#1}/2))" ]
 	do
-		ret="${ret}${string%${string##* ??}}"
-		string=" ${string##* ??}"
+		ret="${ret}${num%${num##* ??}}"
+		num=" ${num##* ??}"
 		i="$(($i+1))"
 	done
 	output "$ret"
@@ -224,12 +220,12 @@ num() {
 }
 
 endian() {
-	string=" $@"
+	num=" $@"
 	ret=""
-	while [ -n "$string" ]
+	while [ -n "$num" ]
 	do
-		ret="$ret${string##* } "
-		string="${string% *}"
+		ret="$ret${num##* } "
+		num="${num% *}"
 	done
 	output "${ret% }"
 }
@@ -321,15 +317,15 @@ get_msb() {
 }
 
 assemble() {
-	string="$@"
-	[ "$SAS_ENDIAN" -eq 1 ] && string=$(endian "$string")
+	num="$@"
+	[ "$SAS_ENDIAN" -eq 1 ] && num=$(endian "$num")
 
 	[ "$SAS_VERBOSE" -eq 1 ] &&
-		output "assemble: $(pad -b 4 $sas_pc): <$string> "
+		output "assemble: $(pad -b 4 $sas_pc): <$num> "
 
-	for byte in $string
+	for ret in $num
 	do
-		run printf "\x$byte" >> "$SAS_OUTPUT" ||
+		run printf "\x$ret" >> "$SAS_OUTPUT" ||
 			return 1
 		sas_pc=$(tohex "$((0x$sas_pc + 0x1))")
 	done
