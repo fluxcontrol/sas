@@ -23,16 +23,29 @@ Keep in mind the following points/requirements:
   in your ISA, with values that correspond to how those registers are encoded
   into opcode values. This is of course ISA-dependent, so it may not make sense
   to do so for some ISAs, but many of them encode registers in a logical and
-  consisten manner, so having variables for them will make your code far more
+  consistent manner, so having variables for them will make your code far more
   readable and less error-prone. You may also want to define register
-  pattern-match variables. See arch/x86.set as an example.
+  pattern-match variables for checking instruction operand types. See
+  arch/x86.set as an example.
+
+* ISA-specific variables and functions
+  To the extent possible, these should be avoided in order to promote as high a
+  degree of portability as possible. However, different ISAs are, in fact,
+  different, and therefore have different requirements that are sometimes not
+  so portable. For example, calculating the scale-index-base for x86, or the
+  barrel shifter for ARM.
 
 * Keep variable use in calculations to a minimum
-  To limit memory consumption, no variables should be used, unless absolutely
-  necessary. It should be possible to implement everything needed using a
-  single variable, $sas_asm, or less (parameter substitution!). If you
-  absolutely cannot keep to this minimum, demonstrate the problem and the limit
-  can be expanded in as portable and minimal a way as possible.
+  To limit memory consumption, variable use should be avoided as much as
+  possible (this excludes register and other ISA-specific necessary variables
+  [see above] and global variables defined in the core). It should be possible
+  to implement all else using a single variable, $sas_asm, or less (abuse
+  parameter substitution!). If you absolutely cannot keep to this minimum,
+  demonstrate the problem and the limit can be expanded in as portable and
+  minimal a way as possible. Example: if avoiding the use of variables results
+  in unwieldy hordes of code that would actually produce higher memory
+  requirements anyway for loading the code into memory, then obviously using
+  some variables would make more sense in this case.
 
 * Instruction/mnemonic implementations
   All instructions are implemented by the normal mnemonic. All mnemonics are
@@ -42,20 +55,34 @@ Keep in mind the following points/requirements:
 * Error conditions
   Always return 1 on encountering an error. The caller (the core) will see this
   and call invalid(), which will print an error message and exit with an error
-  code.
+  code. Invalid mnemonics, operand combinations, etc. should all be caught
+  appropriately and return an error. This helps maintain correctness (see
+  above).
 
-The API itself is described below:
+The core API itself is described below:
 
 Global Variables
 ================
-$hex		--> expands to [0-9A-Za-z]; used in pattern matching contexts to test for
-		    a hexdecimal digit
-$dec		--> expands to [0-9]; used in pattern matching contexts to test for a
-		    decimal digit
-$bin		--> expands to [01]; used in pattern matching contexts to test for a
-		    binary digit
-$sas_asm	--> placeholder variable used for calculations done in the instruction
-		    implementations themselves
+$hex		--> expands to [0-9A-Za-z]; used in pattern matching contexts
+		    to test for a hexdecimal digit
+
+$dec		--> expands to [0-9]; used in pattern matching contexts to test
+		    for a decimal digit
+
+$bin		--> expands to [01]; used in pattern matching contexts to test
+		    for a binary digit
+
+$imm		--> expands to "*$dec 0x$hex* $hex*h $bin*b"; used in pattern
+		    matching contexts to test for an immediate value (any valid
+		    number string)
+
+$mref		--> expands to "\[*\]"; used in pattern matching contexts to
+		    test for a memory reference (a value enclosed in square
+		    brackets)
+
+$sas_asm	--> placeholder variable used for calculations done in the
+		    instruction implementations themselves
+
 $sas_pc		--> represents the "program counter"; the "address" of the
 		    current instruction to be assembled (eip in x86) -- unless
 		    you need to do something very tricky, you will probably
@@ -68,30 +95,38 @@ args		--> tests how many operands were provided as input to the
 		    receives the correct number of operands, otherwise return
 		    error (return 1); does not "echo" anything, only returns a
 		    return value (return 0 or return 1)
-		      Example: args 2 || return 1 [return 1 if operands != 2]
+		      Example: args 2 [returns 1 if number of operands != 2]
 
-tohex		--> converts an number string to hexadecimal; handles different
+tohex		--> converts a number string to hexadecimal; handles different
 		    bases as follows:
-		        Nd -> decimal
-			Nb -> binary
-			Nh -> hexadecimal
-			0xN -> hexadecimal
-			N -> hexadecimal
-		      Example: tohex 16d [returns "10"]
-		    If passed a second argument which specifies required size
-		    in bytes, it doesn't "echo" anything, only returns a return
-		    value (return 0 or return 1)
-		      Example: tohex "$1" 4 || return 1 [return 1 if != dword]
+		          N  -> decimal
+			  Nb -> binary
+			  Nh -> hexadecimal
+			0xN  -> hexadecimal
+		    if passed a second argument which specifies a required size
+		    in bytes, it doesn't "echo" anything, only returns true or
+		    false (return 0 if 1st arg matches the size, or return 1 if
+		    it doesn't)
+		      Examples: tohex 16 [returns "10"]
+		                tohex 16h [returns "16"]
+		                tohex "$1" 4 || return 1 [return 1 if != 32bit]
 
-tobytes		--> converts a plain number string into a string of bytes,
+tobin		--> converts a hex string to binary
+		      Example: tobin ff [returns "11111111"]
+
+tobytes		--> converts a plain hex string into a string of bytes,
 		    separated by spaces; does not perform number conversion on
 		    the input
 		      Example: tobytes deadc0de [returns "de ad c0 de"]
 
-hexadd		--> returns the sums of all its hexadecimal arguments
+num		--> wrapper function that performs tohex() followed by
+		    tobytes() on the input
+		      Example: num 512d [returns "02 00"]
+
+hexadd		--> returns the positive sums of all its hexadecimal arguments
 		      Example: hexadd 1a 2b 3c [returns "81"]
 
-hexsub		--> returns the sums of all its hexadecimal arguments
+hexsub		--> returns the negative sums of all its hexadecimal arguments
 		      Example: hexadd 3c 0a 03 [returns "2f"]
 
 hexmult		--> returns the product of all its hexadecimal arguments
@@ -100,12 +135,8 @@ hexmult		--> returns the product of all its hexadecimal arguments
 hexdiv		--> returns the quotient of all its hexadecimal arguments
 		      Example: hexdiv 3c 0a 03 [returns "02"]
 
-num		--> wrapper function that performs tohex() followed by
-		    tobytes() on the input
-		      Example: num 512d [returns "02 00"]
-
 endian		--> swaps the endianness of the input string; expects input as
-		    a byte string (bytes separated by spaces)
+		    a hex byte string (bytes separated by spaces)
 		      Example: endian "de ad c0 de" [returns "de c0 ad de"]
 
 get_lsb		--> returns the least significant byte in its argument,
@@ -120,19 +151,25 @@ get_msb		--> returns the most significant byte in its argument,
 		      Examples: get_msb 12345678 [returns "12"]
 		                get_msb "12 34 56 78" [returns "12"]
 
-pad		--> pads its 2nd argument by the number of bytes in its 1st
-		    argument. If there are three arguments, the 1st argument
-		    specifies what to pad with, the 2nd is the number of times
-		    to pad, and the 3rd is the string to pad. The default pad
-		    is "0".
-		      Examples: pad 2 18 [returns "0018"]
-		                pad 90 4 18 [returns "90909018"]
+strip_zero	--> strips leading 0s from the number string passed in the 1st
+		    argument
+		      Example: strip_zero "000dead" [returns "dead"]
+
+pad		--> pads its 2nd argument by the number in its 1st argument. If
+		    there are three arguments, the 1st argument specifies what
+		    to pad with, the 2nd is the number of times to pad, and the
+		    3rd is the string to pad; if passed -b as a flag before the
+		    first argument, then the number to pad by is in bytes (not
+		    digits); the default pad is "0"
+		      Examples: pad 4 18 [returns "0018"]
+		                pad -b 90 4 18 [returns "90909018"]
 
 get_reg		--> for each name passed as an argument, returns the value of
 		    the same-named variable; this is meant to be used in
 		    conjunction with defining register names as variables in
-		    your ISA.set file, see arch/x86.set as an example
-		      Example: get_reg eax [returns the value of $eax]
+		    your ISA.set file, as described above under the point
+		    "Registers" (see arch/x86.set as an example)
+		      Example: get_reg eax [returns "$eax"]
 
 offset		--> calculates the PC-relative address using the offset in the
 		    1st argument, and optionally also the instruction length
@@ -141,10 +178,61 @@ offset		--> calculates the PC-relative address using the offset in the
 		      Examples: offset 10 4 [returns "10 - ($sas_pc + 4)"]
 		                offset 0a [returns "0a - $sas_pc"]
 
+substr		--> tests for the existence of a substring within a larger
+		    string (no expansion); 1st argument is the substring to
+		    test for, and the 2nd argument is the string to search
+		    within; returns 0 if the substring is found (true) and 1
+		    (false) if it wasn't found
+		      Examples: substr foo "abc foo 123" [returns 0]
+		                substr foo "abc XYZ 123" [returns 1]
+
+check_type	--> tests to see if 1st argument matches the type given in the
+		    2nd argument (expands globs according to case statement
+		    pattern rules)
+		      Examples: check_type "edx" "$reg32" [returns 0]
+		                check_type "deadc0deh" "$hex" [returns 0]
+
+check_size	--> tests to see if the 2nd argument does not exceed the size
+		    given in the 1st argument; if passed '-b' before the 1st
+		    argument, then the size is in bytes
+		      Examples: check_size -b 4 "1234h" [returns 0]
+		                check_size 4 "deadc0deh" [returns 1]
+		                check_size -b 4 "deadc0deh" [returns 0]
+		                check_size -b 4 "1234deadc0deh" [returns 1]
+
+memref		--> tests to see if its input (1st argument) is a memory
+		    reference (an argument surrounded by '[ ]', i.e. [reg1] or
+		    [0xdeadc0de]), and if it is then it returns the argument
+		    stripped of the '[ ]' enclosing characters.
+		      Examples: memref '[edx]' [returns "edx"]
+		                memref 'edx' [returns 1]
+
+address		--> treats the 2nd argument as an address padded for the
+		    number of bytes specified in the 1st argument, and outputs
+		    the result as a list of bytes; if the length of the 2nd
+		    argument exceeds the length specified in the 1st argument,
+		    and error is returned
+		      Examples: address 4 080c [returns "00 00 08 0c"]
+		                address 2 123456 [returns 1]
+
 assemble	--> for each ascii-representation of a hexadecimal byte passed
 		    to this function, it will convert the ascii to the actual
 		    hexadecimal (i.e., machine code) and write it to
 		    $SAS_OUTPUT (supplied at the user level -- do NOT modify
-		    this variable in your ISA.set file!)
+		    this variable in any ISA.set file!)
 		      Example: assemble c8 80
+
+output		--> outputs its argument(s) to stdout; this should be avoided
+		    as much as possible, unless an ISA really needs to
+		    implement its own functions to handle instruction parsing,
+		    in which case it may be necessary to pass constructed
+		    machine code segment output from a routine back to the main
+		    ISA processing
+		      Example: output "$(tobin af)0011" [returns "101011110011"]
+
+output_nl	--> exactly the same as output (see above), except that this
+		    will append a newline after the contents of its
+		    argument(s); note that, like output, this should be avoided
+		    where possible
+		      Example: output "$(tobin f)0011" [returns "11110011\n"]
 
