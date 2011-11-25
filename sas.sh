@@ -289,12 +289,15 @@ offset() {
 }
 
 get_reg() {
+	num=""
+	[ "$1" = '-b' ] && { num=1; shift; }
 	ret=""
 	while [ "$#" -gt 0 ]
 	do
 		eval ret="\$$1"
-		[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
-		output "$ret "
+		[ -n "$num" ] &&
+			[ "$((${#ret} % 2))" -eq 1 ] && ret="0$ret"
+		output "$ret"
 		shift
 	done
 }
