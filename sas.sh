@@ -440,7 +440,7 @@ process_cmdline() {
 		case "$1" in
 			-a)
 				shift 1
-				SAS_INCODE="$@"
+				SAS_INCODE="$1"
 				shift 1
 				count=$((count+2))
 				;;
@@ -500,7 +500,10 @@ load_instr
 if [ -f "${SAS_INFILE:-$1}" ]
 then
 	assemble_file "${SAS_INFILE:-$1}"
-elif [ -n "$SAS_INCODE" ] || [ "$#" -gt 0 ]
+elif [ -n "$SAS_INCODE" ]
+then
+	assemble_direct "$SAS_INCODE"
+elif [ "$#" -gt 0 ]
 then
 	assemble_direct "$@"
 else
