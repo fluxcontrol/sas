@@ -381,11 +381,14 @@ check_size() {
 	if [ "$1" = "-b" ]
 	then
 		shift
-		ret=$(address $1 $2)
+		ret=$(tohex "$2")
+		ret="${#ret}"
+		ret=$(( (ret+(ret%2)) / 2 ))
 	else
-		ret=$(address $(($1/2)) $2)
+		ret=$(tohex "$2")
+		ret="${#ret}"
 	fi
-	[ -n "$ret" ] || return 1
+	[ "$ret" -le "$1" ] || return 1
 }
 
 memref() {
