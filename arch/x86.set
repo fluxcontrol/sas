@@ -1047,62 +1047,62 @@ instr_mov() {
 		if check_type "$1" "$mref"
 		then
 			sas_asm=$(memref "$1")
-			check_type "$1" "*[+*]*" &&
-				isa_sib "$(memref $1)" &&
-				check_size -b 4 $2 &&
-					assemble c7 04 $sib $(tobytes $(tohex $2)) &&
+			check_type "$sas_asm" "*[+*]*" &&
+				isa_sib "$sas_asm" &&
+				check_size -b 1 $2 &&
+					assemble c6 04 $sib $(address 1 $2) &&
 					return 0
 				check_size -b 2 $2 &&
-					assemble 66 c7 04 $sib $(tobytes $(tohex $2)) &&
+					assemble 66 c7 04 $sib $(endian $(address 2 $2)) &&
 					return 0
-				check_size -b 1 $2 &&
-					assemble c6 04 $sib $(tobytes $(tohex $2)) &&
+				check_size -b 4 $2 &&
+					assemble c7 04 $sib $(endian $(address 4 $2)) &&
 					return 0
 			check_type "$sas_asm" "$reg32" &&
+				check_size -b 1 $2 &&
+					assemble c6 $(get_reg -b $sas_asm) $(address 1 $2) &&
+					return 0
+				check_size -b 2 $2 &&
+					assemble 66 c7 $(get_reg -b $sas_asm) $(endian $(address 2 $2)) &&
+					return 0
 				check_size -b 4 $2 &&
 					assemble c7 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
 					return 0
-				check_size -b 2 $2 &&
-					assemble 66 c7 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
-					return 0
-				check_size -b 1 $2 &&
-					assemble c6 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
-					return 0
 			check_type "$sas_asm" "$imm" &&
-				check_size -b 4 $2 &&
-					assemble c7 05 $(endian $(address 4 $sas_asm)) $(address 1 $2) &&
-					return 0
-				check_size -b 2 $2 &&
-					assemble 66 c7 05 $(endian $(address 4 $sas_asm)) $(address 1 $2) &&
-					return 0
 				check_size -b 1 $2 &&
 					assemble c6 05 $(endian $(address 4 $sas_asm)) $(address 1 $2) &&
+					return 0
+				check_size -b 2 $2 &&
+					assemble 66 c7 05 $(endian $(address 4 $sas_asm)) $(endian $(address 2 $2)) &&
+					return 0
+				check_size -b 4 $2 &&
+					assemble c7 05 $(endian $(address 4 $sas_asm)) $(endian $(address 4 $2)) &&
 					return 0
 		fi
 		sas_asm=$(tohex $2)
 		case $((${#sas_asm}/2)) in
 			4)
 				check_type "$1" "eax" &&
-					assemble a1 $(endian $sas_asm) &&
+					assemble a1 $(endian $(tobytes $sas_asm)) &&
 					return 0
 				check_type "$1" "$reg32" &&
-					assemble $(hexadd b8 $(get_reg $1)) $(endian $sas_asm) &&
+					assemble $(hexadd b8 $(get_reg $1)) $(endian $(tobytes $sas_asm)) &&
 					return 0
 				;;
 			2)
 				check_type "$1" "ax" &&
-					assemble a1 $(endian $sas_asm) &&
+					assemble a1 $(endian $(tobytes $sas_asm)) &&
 					return 0
 				check_type "$1" "$reg16" &&
-					assemble 66 $(hexadd b8 $(get_reg $1)) $(endian $sas_asm) &&
+					assemble 66 $(hexadd b8 $(get_reg $1)) $(endian $(tobytes $sas_asm)) &&
 					return 0
 				;;
 			1)
 				check_type "$1" "al" &&
-					assemble a0 $(endian $sas_asm) &&
+					assemble a0 $(endian $(tobytes $sas_asm)) &&
 					return 0
 				check_type "$1" "$reg8" &&
-					assemble $(hexadd b0 $(get_reg $1)) $(endian $sas_asm) &&
+					assemble $(hexadd b0 $(get_reg $1)) $(endian $(tobytes $sas_asm)) &&
 					return 0
 				;;
 		esac
