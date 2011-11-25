@@ -354,6 +354,17 @@ check_type() {
 	return 1
 }
 
+check_size() {
+	if [ "$1" = "-b" ]
+	then
+		shift
+		ret=$(address $1 $2)
+	else
+		ret=$(address $(($1/2)) $2)
+	fi
+	[ -n "$ret" ] || return 1
+}
+
 memref() {
 	ret="${1#?}"
 	ret="${ret%?}"
