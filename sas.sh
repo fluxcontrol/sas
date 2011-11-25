@@ -77,7 +77,7 @@ output_hex() {
 sas_help () {
 	run cat <<EOF
 
-usage: ${0##*/} [-afhiov] <ASM> | <FILE> | <STDIN>
+usage: ${0##*/} [-abdefhioOv] <ASM> | <FILE> | <STDIN>
 
 ${0##*/} is a pure POSIX shell assembler. It accepts assembly input in one of
 three forms: from a file specified via the -f flag or as the last argument on
