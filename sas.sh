@@ -18,6 +18,7 @@
 ###   configuration values, placeholder variables, etc.
 ################################################################################
 SAS_OUTPUT="${SAS_OUTPUT:-/dev/stdout}"
+SAS_NULL="${SAS_NULL:-/dev/null}"
 
 SAS_VERBOSE=${SAS_VERBOSE:-0}
 SAS_ENDIAN="${SAS_ENDIAN:-0}"
@@ -408,7 +409,7 @@ exec_instr() {
 	
 	if [ -n "$op" ]
 	then
-		"instr_$op" $arguments || invalid "$op $arguments"
+		"instr_$op" $arguments 2>"$SAS_NULL" || invalid "$op $arguments"
 	else
 		invalid "$op $arguments"
 	fi
