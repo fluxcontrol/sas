@@ -53,6 +53,88 @@ reg8="[a-d][hl]"
 sreg="[c-gs]s"
 regs="$reg32 $reg16 $reg8 $sreg"
 
+isa_sib() {
+	sas_asm="$1"
+	sib=''
+	if check_type "$sas_asm" '*[*]*'
+	then
+		if check_type "$sas_asm" '*[+]*'
+		then
+			check_type "${sas_asm%+*}" '*[*]*' &&
+				sib=$(get_reg "${sas_asm#*+}") &&
+				sas_asm="${sas_asm%+*}" &&
+				sib=$(hexadd $(hexmult 8 $(get_reg "${sas_asm#*[*]}")) $sib) &&
+				case ${sas_asm%[*]*} in
+					8) sib=$(hexadd $(tohex $((3*64)) ) $sib) ;;
+					4) sib=$(hexadd $(tohex $((2*64)) ) $sib) ;;
+					2) sib=$(hexadd $(tohex $((1*64)) ) $sib) ;;
+					1) ;;
+					*) return 1 ;;
+				esac &&
+				return 0
+			check_type "${sas_asm#*+}" '*[*]*' &&
+				sib=$(get_reg "${sas_asm%+*}") &&
+				sas_asm="${sas_asm#*+}" &&
+				sib=$(hexadd $(hexmult 8 $(get_reg "${sas_asm%[*]*}")) $sib) &&
+				case ${sas_asm#*[*]} in
+					8) sib=$(hexadd $(tohex $((3*64)) ) $sib) ;;
+					4) sib=$(hexadd $(tohex $((2*64)) ) $sib) ;;
+					2) sib=$(hexadd $(tohex $((1*64)) ) $sib) ;;
+					1) ;;
+					*) return 1 ;;
+				esac &&
+				return 0
+			return 1
+		fi
+		check_type "${sas_asm%[*]*}" "$imm" &&
+			sib=$(hexmult 8 $(get_reg "${sas_asm#*[*]}")) &&
+			case ${sas_asm%[*]*} in
+				8) sib=$(hexadd $(tohex $((3*64)) ) $sib) ;;
+				4) sib=$(hexadd $(tohex $((2*64)) ) $sib) ;;
+				2) sib=$(hexadd $(tohex $((1*64)) ) $sib) ;;
+				1) ;;
+				*) return 1 ;;
+			esac &&
+			return 0
+		check_type "${sas_asm#*[*]}" "$imm" &&
+			sib=$(hexmult 8 $(get_reg "${sas_asm%[*]*}")) &&
+			case ${sas_asm#*[*]} in
+				8) sib=$(hexadd $(tohex $((3*64)) ) $sib) ;;
+				4) sib=$(hexadd $(tohex $((2*64)) ) $sib) ;;
+				2) sib=$(hexadd $(tohex $((1*64)) ) $sib) ;;
+				1) ;;
+				*) return 1 ;;
+			esac &&
+			return 0
+		return 1
+	else
+		check_type "$sas_asm" '*[+]*' &&
+			check_type "${sas_asm%+*}" "$regs" &&
+				sib=$(get_reg "${sas_asm%+*}") &&
+				case ${sas_asm#*+} in
+					8) sib=$(hexadd $(tohex $((3*64)) ) $sib) ;;
+					4) sib=$(hexadd $(tohex $((2*64)) ) $sib) ;;
+					2) sib=$(hexadd $(tohex $((1*64)) ) $sib) ;;
+					1) ;;
+					*) return 1 ;;
+				esac &&
+				return 0
+			check_type "${sas_asm#*+}" "$regs" &&
+				sib=$(get_reg "${sas_asm#*+}") &&
+				case ${sas_asm%+*} in
+					8) sib=$(hexadd $(tohex $((3*64)) ) $sib) ;;
+					4) sib=$(hexadd $(tohex $((2*64)) ) $sib) ;;
+					2) sib=$(hexadd $(tohex $((1*64)) ) $sib) ;;
+					1) ;;
+					*) return 1 ;;
+				esac &&
+				return 0
+		return 1
+	fi
+	sib=$(get_reg "$sas_asm")
+	[ -n "$sib" ] || return 1
+}
+
 ################################################################################
 ### MNEMONICS (ASM INSTRUCTIONS)
 ###   the "standard" x86 intel instruction mnemonics (yes, intel syntax, no
@@ -865,6 +947,10 @@ instr_mov() {
 		if check_type "$1" "$mref"
 		then
 			sas_asm=$(memref "$1") &&
+			check_type "$sas_asm" "*[+*]*" &&
+				isa_sib "$sas_asm" &&
+				assemble 8c $(hexadd 04 $(hexmult 8 $(get_reg $2))) $(tobytes $sib) &&
+				return 0
 			check_type "$sas_asm" "$reg32" &&
 				assemble 8c $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
 				return 0
@@ -882,6 +968,10 @@ instr_mov() {
 		if check_type "$2" "$mref"
 		then
 			sas_asm=$(memref "$2") &&
+			check_type "$sas_asm" "*[+*]*" &&
+				isa_sib "$sas_asm" &&
+				assemble 8e $(hexadd 04 $(hexmult 8 $(get_reg $1))) $(tobytes $sib) &&
+				return 0
 			check_type "$sas_asm" "$reg32" &&
 				assemble 8e $(hexadd $(hexmult 8 $(get_reg $1)) $(get_reg $sas_asm)) &&
 				return 0
@@ -899,6 +989,10 @@ instr_mov() {
 		if check_type "$1" "$mref"
 		then
 			sas_asm=$(memref "$1") &&
+			check_type "$sas_asm" "*[+*]*" &&
+				isa_sib "$sas_asm" &&
+				assemble 89 $(hexadd 4 $(hexmult 8 $(get_reg $2))) $(tobytes $sib) &&
+				return 0
 			check_type "$sas_asm" "$reg32" &&
 				assemble 89 $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
 				return 0
@@ -916,6 +1010,10 @@ instr_mov() {
 		if check_type "$1" "$mref"
 		then
 			sas_asm=$(memref "$1")
+			check_type "$sas_asm" "*[+*]*" &&
+				isa_sib "$sas_asm" &&
+				assemble 66 89 $(hexadd 4 $(hexmult 8 $(get_reg $2))) $(tobytes $sib) &&
+				return 0
 			check_type "$sas_asm" "$reg32" &&
 				assemble 66 89 $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
 				return 0
@@ -933,6 +1031,10 @@ instr_mov() {
 		if check_type "$1" "$mref"
 		then
 			sas_asm=$(memref "$1")
+			check_type "$sas_asm" "*[+*]*" &&
+				isa_sib "$sas_asm" &&
+				assemble 88 $(hexadd 4 $(hexmult 8 $(get_reg $2))) $(tobytes $sib) &&
+				return 0
 			check_type "$sas_asm" "$reg32" &&
 				assemble 88 $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
 				return 0
@@ -947,6 +1049,17 @@ instr_mov() {
 		if check_type "$1" "$mref"
 		then
 			sas_asm=$(memref "$1")
+			check_type "$1" "*[+*]*" &&
+				isa_sib "$(memref $1)" &&
+				check_size -b 4 $2 &&
+					assemble c7 04 $sib $(tobytes $(tohex $2)) &&
+					return 0
+				check_size -b 2 $2 &&
+					assemble 66 c7 04 $sib $(tobytes $(tohex $2)) &&
+					return 0
+				check_size -b 1 $2 &&
+					assemble c6 04 $sib $(tobytes $(tohex $2)) &&
+					return 0
 			check_type "$sas_asm" "$reg32" &&
 				check_size -b 4 $2 &&
 					assemble c7 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
@@ -999,6 +1112,19 @@ instr_mov() {
 	if check_type "$2" "$mref"
 	then
 		sas_asm=$(memref "$2")
+		if check_type "$sas_asm" "*[+*]*"
+		then
+			isa_sib "$sas_asm" &&
+			check_type "$1" "$reg32" &&
+				assemble $(hexadd 8b $(get_reg $1)) 04 $sib &&
+				return 0
+			check_type "$1" "$reg16" &&
+				assemble 66 $(hexadd 8b $(get_reg $1)) 04 $sib &&
+				return 0
+			check_type "$1" "$reg8" &&
+				assemble $(hexadd 8a $(get_reg $1)) 04 $sib &&
+				return 0
+		fi
 		if check_type $sas_asm "$reg32"
 		then
 			check_type "$1" "$reg32" &&
