@@ -27,10 +27,8 @@ edx=2
 # base/index registers
 esp=4
  sp=4
- sl=4
 ebp=5
  bp=5
- bl=5
 esi=6
  si=6
 sil=6
