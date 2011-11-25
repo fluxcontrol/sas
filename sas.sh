@@ -39,6 +39,7 @@ fi
 IFS=$(command -p printf "\n\t ")
 LC_COLLATE="C"
 
+SAS_VERSION="0.1"
 
 # used for matching numerical input types (hex is always used internally)
 hex="[0-9A-Fa-f]"
@@ -77,7 +78,7 @@ output_hex() {
 sas_help () {
 	run cat <<EOF
 
-usage: ${0##*/} [-abdefhioOv] <ASM> | <FILE> | <STDIN>
+usage: ${0##*/} [-abdefhioOvV] <ASM> | <FILE> | <STDIN>
 
 ${0##*/} is a pure POSIX shell assembler. It accepts assembly input in one of
 three forms: from a file specified via the -f flag or as the last argument on
@@ -133,6 +134,9 @@ OPTIONS:
 	-v
 		Verbose output: prints some diagnostic messages on what is
 		currently being assembled, and what it assembles to.
+
+	-V
+		Outputs the version information for this instance of sas.
 
 EOF
 	exit 1
@@ -521,6 +525,11 @@ process_cmdline() {
 				SAS_OUTPUT="$2"
 				shift 2
 				count=$((count+2))
+				;;
+			-V)
+				output_nl "  sas -- the S(hell) AS(sembler)"
+				output_nl "  Version: $SAS_VERSION"
+				exit 0
 				;;
 			-v)
 				SAS_VERBOSE="1"
