@@ -427,7 +427,8 @@ load_instr() {
 search_instr() {
 	for arch in "$SAS_ARCH_DIR"/*.set
 	do
-		output_nl "${arch%.set}"
+		ret="${arch##*/}"
+		output_nl "${ret%.set}"
 	done
 	exit 1
 }
