@@ -23,6 +23,7 @@ SAS_NULL="${SAS_NULL:-/dev/null}"
 SAS_VERBOSE=${SAS_VERBOSE:-0}
 SAS_ENDIAN="${SAS_ENDIAN:-0}"
 SAS_ARCH=${SAS_ARCH:-x86}
+SAS_BITS=${SAS_BITS:-32}
 SAS_INCODE="${SAS_INCODE:-}"
 SAS_INFILE="${SAS_INFILE:-}"
 
@@ -92,6 +93,11 @@ OPTIONS:
 		either a source file or STDIN is required. This option
 		overrides later options (including the bare <ASM>, <FILE>, or
 		<STDIN> inputs).
+
+	-b BITS
+		Number of bits to use as the default for the assembly. Defaults
+		to 32. This is currently only used for padding the address
+		output when verbose assembly is selected (see -v below).
 
 	-d
 		Enable debug output. This implies -v (see below).
@@ -325,7 +331,7 @@ assemble() {
 	[ "$SAS_ENDIAN" -eq 1 ] && num=$(endian "$num")
 
 	[ "$SAS_VERBOSE" -eq 1 ] &&
-		output "assemble: $(pad -b 4 $sas_pc): <$num> "
+		output "assemble: $(pad $SAS_BITS $sas_pc): <$num> "
 
 	for ret in $num
 	do
@@ -465,6 +471,12 @@ process_cmdline() {
 				shift 1
 				count=$((count+2))
 				;;
+			-b)
+				shift 1
+				SAS_BITS="$1"
+				shift 1
+				count=$((count+2))
+				;;
 			-d)
 				SAS_NULL="/dev/stdout"
 				SAS_VERBOSE="1"
@@ -523,6 +535,8 @@ process_cmdline() {
 process_cmdline "$@"
 shift "$?"
 load_instr
+
+SAS_BITS=$((SAS_BITS / 4))
 
 if [ -f "${SAS_INFILE:-$1}" ]
 then
