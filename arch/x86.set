@@ -47,9 +47,11 @@ fs=4
 gs=5
 
 # used for matching
-reg32="e?[xip]"
-reg16="?[xip]"
-reg8="?[hl]"
+reg32="e[a-d]x e[bds]i e[bs]p"
+reg16="[a-d]x [bds]i [bs]p [c-gs]s"
+reg8="[a-d][hl]"
+sreg="[c-gs]s"
+regs="$reg32 $reg16 $reg8 $sreg"
 
 ################################################################################
 ### MNEMONICS (ASM INSTRUCTIONS)
@@ -448,6 +450,9 @@ instr_call() {
 	check_type $(memref "$1") "$reg32" &&
 		assemble ff $(hexadd 10 $(get_reg $(memref $1))) &&
 		return 0
+	check_type $(memref "$1") "$imm" &&
+		assemble ff 15 $(endian $(address 4 $(memref "$1"))) &&
+		return 0
 	check_type "$1" "$reg8" && return 1
 	check_type "$1" "$imm" || return 1
 	tohex "$1" 2 || tohex "$1" 4 || return 1
@@ -566,6 +571,9 @@ instr_and() {
 				return 0
 			check_type $(memref "$1") "$reg32" &&
 				assemble 21 $(hexadd $(get_reg $(memref $1)) $(hexmult 8 $(get_reg $2))) &&
+				return 0
+			check_type $(memref "$1") "$imm" &&
+				assemble 21 $(hexadd 05 $(hexmult 8 $(get_reg $2))) $(endian $(address 4 $(memref $1))) &&
 				return 0
 	check_type "$2" "$reg16" &&
 			check_type "$1" "$reg16" &&
@@ -833,27 +841,191 @@ instr_sar() {
 # mov and xchg
 instr_mov() {
 	args 2 || return 1
-	case "$2" in
-		$reg32)
-			case "$1" in
-				$reg32) assemble 89 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg16)
-			case "$1" in
-				$reg16) assemble 66 89 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		$reg8)
-			case "$1" in
-				$reg8) assemble 88 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) ;;
-				*) return 1 ;;
-			esac
-			;;
-		*) return 1 ;;
-	esac
+	sas_asm=$(memref "$1")
+	check_type "$2" "eax" && check_type "$sas_asm" "$imm" &&
+		sas_asm=$(address 4 $sas_asm) &&
+		assemble a3 $(endian $sas_asm) &&
+		return 0
+	check_type "$2" "ax" && check_type "$sas_asm" "$imm" &&
+		sas_asm=$(address 2 $sas_asm) &&
+		assemble a3 $(endian $sas_asm) &&
+		return 0
+	check_type "$2" "al" && check_type "$sas_asm" "$imm" &&
+		sas_asm=$(address 1 $sas_asm) &&
+		assemble a2 $(endian $sas_asm) &&
+		return 0
+	if check_type "$2" "$sreg"
+	then
+		check_type "$1" "$reg32" &&
+			assemble 8c $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+		check_type "$1" "$reg16" &&
+			assemble 66 8c $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+		if check_type "$1" "$mref"
+		then
+			sas_asm=$(memref "$1") &&
+			check_type "$sas_asm" "$reg32" &&
+				assemble 8c $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
+				return 0
+			check_type "$sas_asm" "$imm" &&
+				sas_asm=$(address 4 $sas_asm) &&
+				assemble 8c $(hexadd 05 $(hexmult 8 $(get_reg $2))) $(endian $sas_asm) &&
+				return 0
+		fi
+	fi
+	if check_type "$1" "$sreg"
+	then
+		check_type "$2" "$reg32 $reg16" &&
+			assemble 8e $(hexadd c0 $(hexmult 8 $(get_reg $1)) $(get_reg $2)) &&
+			return 0
+		if check_type "$2" "$mref"
+		then
+			sas_asm=$(memref "$2") &&
+			check_type "$sas_asm" "$reg32" &&
+				assemble 8e $(hexadd $(hexmult 8 $(get_reg $1)) $(get_reg $sas_asm)) &&
+				return 0
+			check_type "$sas_asm" "$imm" &&
+				sas_asm=$(address 4 $sas_asm) &&
+				assemble 8e $(hexadd 05 $(hexmult 8 $(get_reg $1))) $(endian $sas_asm) &&
+				return 0
+		fi
+	fi
+	if check_type "$2" "$reg32"
+	then
+		check_type "$1" "$reg32" &&
+			assemble 89 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+		if check_type "$1" "$mref"
+		then
+			sas_asm=$(memref "$1") &&
+			check_type "$sas_asm" "$reg32" &&
+				assemble 89 $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
+				return 0
+			check_type "$sas_asm" "$imm" &&
+				sas_asm=$(address 4 $sas_asm) &&
+				assemble 89 $(hexadd 5 $(hexmult 8 $(get_reg $2))) $(endian $sas_asm) &&
+				return 0
+		fi
+	fi
+	if check_type "$2" "$reg16"
+	then
+		check_type "$1" "$reg16" &&
+			assemble 66 89 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+		if check_type "$1" "$mref"
+		then
+			sas_asm=$(memref "$1")
+			check_type "$sas_asm" "$reg32" &&
+				assemble 66 89 $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
+				return 0
+			check_type "$sas_asm" "$imm" &&
+				sas_asm=$(address 4 $sas_asm) &&
+				assemble 66 89 $(hexadd 5 $(hexmult 8 $(get_reg $2))) $(endian $sas_asm) &&
+				return 0
+		fi
+	fi
+	if check_type "$2" "$reg8"
+	then
+		check_type "$1" "$reg8" &&
+			assemble 88 $(hexadd c0 $(hexmult 8 $(get_reg $2)) $(get_reg $1)) &&
+			return 0
+		if check_type "$1" "$mref"
+		then
+			sas_asm=$(memref "$1")
+			check_type "$sas_asm" "$reg32" &&
+				assemble 88 $(hexadd $(hexmult 8 $(get_reg $2)) $(get_reg $sas_asm)) &&
+				return 0
+			check_type "$sas_asm" "$imm" &&
+				sas_asm=$(address 4 $sas_asm) || return 1
+				assemble 88 $(hexadd 5 $(hexmult 8 $(get_reg $2))) $(endian $sas_asm) &&
+				return 0
+		fi
+	fi
+	if check_type "$2" "$imm"
+	then
+		if check_type "$1" "$mref"
+		then
+			sas_asm=$(memref "$1")
+			check_type "$sas_asm" "$reg32" &&
+				check_size -b 4 $2 &&
+					assemble c7 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
+					return 0
+				check_size -b 2 $2 &&
+					assemble 66 c7 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
+					return 0
+				check_size -b 1 $2 &&
+					assemble c6 $(get_reg -b $sas_asm) $(endian $(address 4 $2)) &&
+					return 0
+			check_type "$sas_asm" "$imm" &&
+				check_size -b 4 $2 &&
+					assemble c7 05 $(endian $(address 4 $sas_asm)) $(address 1 $2) &&
+					return 0
+				check_size -b 2 $2 &&
+					assemble 66 c7 05 $(endian $(address 4 $sas_asm)) $(address 1 $2) &&
+					return 0
+				check_size -b 1 $2 &&
+					assemble c6 05 $(endian $(address 4 $sas_asm)) $(address 1 $2) &&
+					return 0
+		fi
+		sas_asm=$(tohex $2)
+		case $((${#sas_asm}/2)) in
+			4)
+				check_type "$1" "eax" &&
+					assemble a1 $(endian $sas_asm) &&
+					return 0
+				check_type "$1" "$reg32" &&
+					assemble $(hexadd b8 $(get_reg $1)) $(endian $sas_asm) &&
+					return 0
+				;;
+			2)
+				check_type "$1" "ax" &&
+					assemble a1 $(endian $sas_asm) &&
+					return 0
+				check_type "$1" "$reg16" &&
+					assemble 66 $(hexadd b8 $(get_reg $1)) $(endian $sas_asm) &&
+					return 0
+				;;
+			1)
+				check_type "$1" "al" &&
+					assemble a0 $(endian $sas_asm) &&
+					return 0
+				check_type "$1" "$reg8" &&
+					assemble $(hexadd b0 $(get_reg $1)) $(endian $sas_asm) &&
+					return 0
+				;;
+		esac
+	fi
+	if check_type "$2" "$mref"
+	then
+		sas_asm=$(memref "$2")
+		if check_type $sas_asm "$reg32"
+		then
+			check_type "$1" "$reg32" &&
+				assemble $(hexadd 8b $(get_reg $1)) $(get_reg -b $sas_asm) &&
+				return 0
+			check_type "$1" "$reg16" &&
+				assemble 66 $(hexadd 8b $(get_reg $1)) $(get_reg -b $sas_asm) &&
+				return 0
+			check_type "$1" "$reg8" &&
+				assemble $(hexadd 8a $(get_reg $1)) $(get_reg -b $sas_asm) &&
+				return 0
+		fi
+		if check_type $sas_asm "$imm"
+		then
+			sas_asm=$(address 4 $sas_asm) || return 1
+			check_type "$1" "$reg32" &&
+				assemble $(hexadd a1 $(get_reg $1)) $(endian $sas_asm) &&
+				return 0
+			check_type "$1" "$reg16" &&
+				assemble 66 $(hexadd a1 $(get_reg $1)) $(endian $sas_asm) &&
+				return 0
+			check_type "$1" "$reg8" &&
+				assemble $(hexadd a0 $(get_reg $1)) $(endian $sas_asm) &&
+				return 0
+		fi
+	fi
+	return 1
 }
 
 instr_xchg() {

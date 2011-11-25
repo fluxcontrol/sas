@@ -358,6 +358,12 @@ memref() {
 	output "$ret"
 }
 
+address() {
+	ret=$(pad -b "$1" $(tohex "$2"))
+	[ "${#ret}" -eq $(($1*2)) ] || return 1
+	tobytes "$ret"
+}
+
 decomment() {
 	output "${1%%;*}"
 }
