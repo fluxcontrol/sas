@@ -93,6 +93,9 @@ OPTIONS:
 		overrides later options (including the bare <ASM>, <FILE>, or
 		<STDIN> inputs).
 
+	-d
+		Enable debug output. This implies -v (see below).
+
 	-e
 		Flip the endianness of the assembled output. This is useful for
 		ISAs that can be either big-endian or little-endian, such as
@@ -461,6 +464,12 @@ process_cmdline() {
 				SAS_INCODE="$1"
 				shift 1
 				count=$((count+2))
+				;;
+			-d)
+				SAS_NULL="/dev/stdout"
+				SAS_VERBOSE="1"
+				shift 1
+				count=$((count+1))
 				;;
 			-e)
 				SAS_ENDIAN="1"
