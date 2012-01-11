@@ -225,12 +225,12 @@ tohex() {
 		*${dec}) num=$(convert_dec_hex "$1") ;;
 	esac
 	[ -z "$2" ] && output "$num" && return 0
-	[ "$((${#num} % 2))" -eq 1 ] && num="0$num"
-	[ "$((${#num}/2))" -eq "${2:-$((${#num}/2))}" ] || return 1
+	[ "$(((${#num}+${#num}%2)/2))" -eq "$2" ] || return 1
 }
 
 num() {
-	tobytes $(tohex "$1")
+	num=$(tohex "$1")
+	[ -n "$num" ] && tobytes $(pad -b 1 "$num")
 }
 
 endian() {
