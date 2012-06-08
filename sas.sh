@@ -18,6 +18,7 @@
 ###   configuration values, placeholder variables, etc.
 ################################################################################
 SAS_OUTPUT="${SAS_OUTPUT:-/dev/stdout}"
+SAS_STDERR="${SAS_OUTPUT:-/dev/stderr}"
 SAS_NULL="${SAS_NULL:-/dev/null}"
 
 SAS_VERBOSE=${SAS_VERBOSE:-0}
@@ -485,7 +486,7 @@ process_cmdline() {
 				count=$((count+2))
 				;;
 			-d)
-				SAS_NULL="/dev/stdout"
+				SAS_NULL="$SAS_STDERR"
 				SAS_VERBOSE="1"
 				shift 1
 				count=$((count+1))
