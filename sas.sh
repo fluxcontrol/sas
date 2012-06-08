@@ -65,15 +65,15 @@ run() {
 }
 
 output() {
-	run printf "%s" "$1"
+	command -p printf "%s" "$1"
 }
 
 output_nl() {
-	run printf "%s\n" "$1"
+	command -p printf "%s\n" "$1"
 }
 
 output_hex() {
-	run printf "%x" "$1"
+	command -p printf "%x" "$1"
 }
 
 debug() {
