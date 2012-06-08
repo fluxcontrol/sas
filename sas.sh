@@ -76,6 +76,11 @@ output_hex() {
 	run printf "%x" "$1"
 }
 
+debug() {
+	[ "$SAS_NULL" != "/dev/null" ] &&
+	command -p printf "debug: %s\n" "$1" > "$SAS_NULL"
+}
+
 sas_help () {
 	run cat <<EOF
 
