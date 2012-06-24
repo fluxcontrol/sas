@@ -1,0 +1,1800 @@
+#!/bin/sh
+
+#set -x
+
+################################################################################
+### REGISTER DEFINITIONS
+###   define register values, operand match sets, etc.
+################################################################################
+ r0="0"
+ r1="1"
+ r2="2"
+ r3="3"
+ r4="4"
+ r5="5"
+ r6="6"
+ r7="7"
+ r8="8"
+ r9="9"
+r10="a"
+r11="b"
+r12="c"
+r13="d"
+r14="e"
+r15="f"
+
+ a1="$r0"
+ a2="$r1"
+ a3="$r2"
+ a4="$r3"
+ v1="$r4"
+ v2="$r5"
+ v3="$r6"
+ v4="$r7"
+ v5="$r8"
+ v6="$r9"
+rfp="$r9"
+ v7="$r10"
+ sl="$r10"
+ v8="$r11"
+ fp="$r11"
+ ip="$r12"
+ sp="$r13"
+ lr="$r14"
+ pc="$r15"
+
+reg="r[0-9] r[12][0-9] r3[01] a[1-4] v[1-8] [is]p lr pc"
+imm="$hex* 0x$hex* $hex*h $bin*b $dec*d"
+
+opcode=""
+
+# conditions
+cond_eq="0"
+cond_ne="1"
+cond_cs="2"
+cond_hs="2"
+cond_cc="3"
+cond_lo="3"
+cond_mi="4"
+cond_pl="5"
+cond_vs="6"
+cond_vc="7"
+cond_hi="8"
+cond_ls="9"
+cond_ge="a"
+cond_lt="b"
+cond_gt="c"
+cond_le="d"
+cond_al="e"
+cond_nv="f"
+   cond="$cond_al"
+
+# flag bits
+f_l="0" # branch with link or not
+f_i="0" # 2nd operand is immediate or not
+f_s="0" # set condition codes on operation or not
+f_a="0" # accumulate multiplication or not
+
+isa_shifter() {
+	case "$1" in
+		ASR|asr)
+			if check_type "$3" "$reg"
+			then
+				output "$(get_reg $3)5$2"
+			else
+				output "$(hexadd $(tohex $(($3*8))) 4)$2"
+			fi
+			;;
+		LSL|lsl)
+			if check_type "$3" "$reg"
+			then
+				output "$(get_reg $3)1$2"
+			else
+				output "$(tohex $(($3*8)))$2"
+			fi
+			;;
+		LSR|lsr)
+			if check_type "$3" "$reg"
+			then
+				output "$(get_reg $3)3$2"
+			else
+				output "$(hexadd $(tohex $(($3*8))) 2)$2"
+			fi
+			;;
+		ROR|ror)
+			if check_type "$3" "$reg"
+			then
+				output "$(get_reg $3)7$2"
+			else
+				output "$(hexadd $(tohex $(($3*8))) 6)$2"
+			fi
+			;;
+		RRX|rrx)
+			output "06$2"
+			;;
+		*) return 1 ;;
+	esac
+}
+
+isa_instr2() {
+	args 2 || args 3 || args 4 || return 1
+	if check_type "$2" "$reg"
+	then
+		sas_asm="$(get_reg $2)"
+		f_i="0"
+		{ args 3 || args 4; } && sas_asm="$(isa_shifter $3 $sas_asm $4)"
+	else
+		sas_asm="$(tohex $2)"
+		f_i="1"
+	fi
+	assemble $(tobytes ${cond:-$cond_al}$(pad 2 $(tohex "${f_i:-0}${opcode}${f_s:-0}b"))0$(get_reg $1)$(pad 3 ${sas_asm}))
+	cond=""
+	f_s=""
+}
+
+isa_instr3() {
+	args 3 || args 4 || args 5 || return 1
+	if check_type "$3" "$reg"
+	then
+		sas_asm="$(get_reg $3)"
+		f_i="0"
+		{ args 4 || args 5; } && sas_asm="$(isa_shifter $4 $sas_asm $5)"
+	else
+		sas_asm="$(tohex $3)"
+		f_i="1"
+	fi
+	echo "$(tobytes ${cond:-$cond_al}$(pad 2 $(tohex "${f_i:-0}${opcode}${f_s:-0}b"))$(get_reg $2 $1)$(pad 3 ${sas_asm}))" > /dev/stderr
+	assemble $(tobytes ${cond:-$cond_al}$(pad 2 $(tohex "${f_i:-0}${opcode}${f_s:-0}b"))$(get_reg $2 $1)$(pad 3 ${sas_asm}))
+	cond=""
+	f_s=""
+}
+
+isa_instr_mul() {
+	args 3 || args 4 || return 1
+	check_type "$3" "$reg" || return 1 
+	sas_asm="0"
+	args 4 && sas_asm="$(get_reg $4)"
+	assemble $(tobytes ${cond:-$cond_al}0$(tohex "00${f_a:-0}${f_s:-0}b")$(get_reg $1)${sas_asm}$(get_reg $3)9$(get_reg $2))
+	cond=""
+	f_s=""
+	f_a=""
+}
+
+isa_instr_lmul() {
+	args 4 || return 1
+	check_type "$3" "$reg" || return 1 
+	assemble $(tobytes ${cond:-$cond_al}0$(tohex "${opcode}${f_a:-0}${f_s:-0}b")$(get_reg $2 $1 $4)9$(get_reg $3))
+	cond=""
+	f_s=""
+	f_a=""
+}
+
+isa_branch() {
+	args 1 || return 1
+	check_type "$1" "$imm" || return 1
+	assemble $(tobytes ${cond:-$cond_al}$(hexadd a ${f_i:-0})$(pad 8 $(tohex $1)))
+}
+
+isa_interrupt() {
+	args 1 || return 1
+	check_type "$1" "$imm" || return 1
+	assemble ${cond:-$cond_al}f $(tobytes $(pad -b 3 $(tohex $1)))
+}
+
+################################################################################
+### MNEMONICS (ASM INSTRUCTIONS)
+###   the "standard" x86 intel instruction mnemonics (yes, intel syntax, no
+###   gas)
+################################################################################
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# data definitions
+instr_db() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(num "$1")
+		shift
+	done
+}
+
+instr_dh() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(endian $(tobytes $(pad -b 2 $(tohex "$1"))))
+		shift
+	done
+}
+
+instr_dw() {
+	args 0 && return 1
+	while [ -n "$1" ]
+	do
+		assemble $(endian $(tobytes $(pad -b 4 $(tohex "$1"))))
+		shift
+	done
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# nop
+instr_nop() {
+	args 0 || return 1
+	assemble $(tobytes $(pad -b 4 "0"))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# interrupts and exceptions
+instr_swi() { cond="$cond_al"; isa_interrupt "$@"; }
+instr_swieq() { cond="$cond_eq"; isa_interrupt "$@"; }
+instr_swine() { cond="$cond_ne"; isa_interrupt "$@"; }
+instr_swics() { cond="$cond_cs"; isa_interrupt "$@"; }
+instr_swicc() { cond="$cond_cc"; isa_interrupt "$@"; }
+instr_swihs() { cond="$cond_hs"; isa_interrupt "$@"; }
+instr_swilo() { cond="$cond_lo"; isa_interrupt "$@"; }
+instr_swimi() { cond="$cond_mi"; isa_interrupt "$@"; }
+instr_swipl() { cond="$cond_pl"; isa_interrupt "$@"; }
+instr_swivs() { cond="$cond_vs"; isa_interrupt "$@"; }
+instr_swivc() { cond="$cond_vc"; isa_interrupt "$@"; }
+instr_swihi() { cond="$cond_hi"; isa_interrupt "$@"; }
+instr_swils() { cond="$cond_ls"; isa_interrupt "$@"; }
+instr_swige() { cond="$cond_ge"; isa_interrupt "$@"; }
+instr_swilt() { cond="$cond_lt"; isa_interrupt "$@"; }
+instr_swigt() { cond="$cond_gt"; isa_interrupt "$@"; }
+instr_swile() { cond="$cond_le"; isa_interrupt "$@"; }
+instr_swial() { cond="$cond_al"; isa_interrupt "$@"; }
+
+instr_svc() { cond="$cond_al"; isa_interrupt "$@"; }
+instr_svceq() { cond="$cond_eq"; isa_interrupt "$@"; }
+instr_svcne() { cond="$cond_ne"; isa_interrupt "$@"; }
+instr_svccs() { cond="$cond_cs"; isa_interrupt "$@"; }
+instr_svccc() { cond="$cond_cc"; isa_interrupt "$@"; }
+instr_svchs() { cond="$cond_hs"; isa_interrupt "$@"; }
+instr_svclo() { cond="$cond_lo"; isa_interrupt "$@"; }
+instr_svcmi() { cond="$cond_mi"; isa_interrupt "$@"; }
+instr_svcpl() { cond="$cond_pl"; isa_interrupt "$@"; }
+instr_svcvs() { cond="$cond_vs"; isa_interrupt "$@"; }
+instr_svcvc() { cond="$cond_vc"; isa_interrupt "$@"; }
+instr_svchi() { cond="$cond_hi"; isa_interrupt "$@"; }
+instr_svcls() { cond="$cond_ls"; isa_interrupt "$@"; }
+instr_svcge() { cond="$cond_ge"; isa_interrupt "$@"; }
+instr_svclt() { cond="$cond_lt"; isa_interrupt "$@"; }
+instr_svcgt() { cond="$cond_gt"; isa_interrupt "$@"; }
+instr_svcle() { cond="$cond_le"; isa_interrupt "$@"; }
+instr_svcal() { cond="$cond_al"; isa_interrupt "$@"; }
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# integer addition
+instr_add() { opcode="0100"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_addeq() { opcode="0100"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_addne() { opcode="0100"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_addcs() { opcode="0100"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_addcc() { opcode="0100"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_addhs() { opcode="0100"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_addlo() { opcode="0100"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_addmi() { opcode="0100"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_addpl() { opcode="0100"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_addvs() { opcode="0100"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_addvc() { opcode="0100"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_addhi() { opcode="0100"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_addls() { opcode="0100"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_addge() { opcode="0100"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_addlt() { opcode="0100"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_addgt() { opcode="0100"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_addle() { opcode="0100"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_addal() { opcode="0100"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_adds() { opcode="0100"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_addeqs() { opcode="0100"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_addnes() { opcode="0100"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_addcss() { opcode="0100"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_addccs() { opcode="0100"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_addhss() { opcode="0100"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_addlos() { opcode="0100"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_addmis() { opcode="0100"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_addpls() { opcode="0100"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_addvss() { opcode="0100"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_addvcs() { opcode="0100"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_addhis() { opcode="0100"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_addlss() { opcode="0100"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_addges() { opcode="0100"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_addlts() { opcode="0100"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_addgts() { opcode="0100"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_addles() { opcode="0100"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_addals() { opcode="0100"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_adc() { opcode="0101"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_adceq() { opcode="0101"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_adcne() { opcode="0101"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_adccs() { opcode="0101"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_adccc() { opcode="0101"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_adchs() { opcode="0101"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_adclo() { opcode="0101"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_adcmi() { opcode="0101"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_adcpl() { opcode="0101"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_adcvs() { opcode="0101"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_adcvc() { opcode="0101"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_adchi() { opcode="0101"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_adcls() { opcode="0101"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_adcge() { opcode="0101"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_adclt() { opcode="0101"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_adcgt() { opcode="0101"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_adcle() { opcode="0101"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_adcal() { opcode="0101"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_adcs() { opcode="0101"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_adceqs() { opcode="0101"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_adcnes() { opcode="0101"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_adccss() { opcode="0101"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_adcccs() { opcode="0101"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_adchss() { opcode="0101"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_adclos() { opcode="0101"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_adcmis() { opcode="0101"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_adcpls() { opcode="0101"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_adcvss() { opcode="0101"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_adcvcs() { opcode="0101"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_adchis() { opcode="0101"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_adclss() { opcode="0101"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_adcges() { opcode="0101"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_adclts() { opcode="0101"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_adcgts() { opcode="0101"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_adcles() { opcode="0101"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_adcals() { opcode="0101"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_qadd() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_qdadd() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# address calculation
+instr_adr() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# integer subtration
+instr_sub() { opcode="0010"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_subeq() { opcode="0010"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_subne() { opcode="0010"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_subcs() { opcode="0010"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_subcc() { opcode="0010"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_subhs() { opcode="0010"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_sublo() { opcode="0010"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_submi() { opcode="0010"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_subpl() { opcode="0010"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_subvs() { opcode="0010"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_subvc() { opcode="0010"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_subhi() { opcode="0010"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_subls() { opcode="0010"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_subge() { opcode="0010"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_sublt() { opcode="0010"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_subgt() { opcode="0010"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_suble() { opcode="0010"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_subal() { opcode="0010"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_subs() { opcode="0010"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_subeqs() { opcode="0010"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_subnes() { opcode="0010"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_subcss() { opcode="0010"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_subccs() { opcode="0010"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_subhss() { opcode="0010"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_sublos() { opcode="0010"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_submis() { opcode="0010"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_subpls() { opcode="0010"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_subvss() { opcode="0010"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_subvcs() { opcode="0010"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_subhis() { opcode="0010"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_sublss() { opcode="0010"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_subges() { opcode="0010"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_sublts() { opcode="0010"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_subgts() { opcode="0010"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_subles() { opcode="0010"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_subals() { opcode="0010"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_sbc() { opcode="0110"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_sbceq() { opcode="0110"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_sbcne() { opcode="0110"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_sbccs() { opcode="0110"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_sbccc() { opcode="0110"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_sbchs() { opcode="0110"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_sbclo() { opcode="0110"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_sbcmi() { opcode="0110"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_sbcpl() { opcode="0110"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_sbcvs() { opcode="0110"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_sbcvc() { opcode="0110"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_sbchi() { opcode="0110"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_sbcls() { opcode="0110"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_sbcge() { opcode="0110"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_sbclt() { opcode="0110"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_sbcgt() { opcode="0110"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_sbcle() { opcode="0110"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_sbcal() { opcode="0110"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_sbcs() { opcode="0110"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_sbceqs() { opcode="0110"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_sbcnes() { opcode="0110"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_sbccss() { opcode="0110"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_sbcccs() { opcode="0110"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_sbchss() { opcode="0110"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_sbclos() { opcode="0110"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_sbcmis() { opcode="0110"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_sbcpls() { opcode="0110"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_sbcvss() { opcode="0110"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_sbcvcs() { opcode="0110"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_sbchis() { opcode="0110"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_sbclss() { opcode="0110"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_sbcges() { opcode="0110"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_sbclts() { opcode="0110"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_sbcgts() { opcode="0110"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_sbcles() { opcode="0110"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_sbcals() { opcode="0110"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_rsb() { opcode="0011"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_rsbeq() { opcode="0011"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_rsbne() { opcode="0011"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_rsbcs() { opcode="0011"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_rsbcc() { opcode="0011"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_rsbhs() { opcode="0011"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_rsblo() { opcode="0011"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_rsbmi() { opcode="0011"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_rsbpl() { opcode="0011"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_rsbvs() { opcode="0011"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_rsbvc() { opcode="0011"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_rsbhi() { opcode="0011"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_rsbls() { opcode="0011"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_rsbge() { opcode="0011"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_rsblt() { opcode="0011"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_rsbgt() { opcode="0011"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_rsble() { opcode="0011"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_rsbal() { opcode="0011"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_rsbs() { opcode="0011"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_rsbeqs() { opcode="0011"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_rsbnes() { opcode="0011"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_rsbcss() { opcode="0011"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_rsbccs() { opcode="0011"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_rsbhss() { opcode="0011"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_rsblos() { opcode="0011"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_rsbmis() { opcode="0011"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_rsbpls() { opcode="0011"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_rsbvss() { opcode="0011"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_rsbvcs() { opcode="0011"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_rsbhis() { opcode="0011"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_rsblss() { opcode="0011"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_rsbges() { opcode="0011"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_rsblts() { opcode="0011"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_rsbgts() { opcode="0011"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_rsbles() { opcode="0011"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_rsbals() { opcode="0011"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_rsc() { opcode="0111"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_rsceq() { opcode="0111"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_rscne() { opcode="0111"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_rsccs() { opcode="0111"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_rsccc() { opcode="0111"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_rschs() { opcode="0111"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_rsclo() { opcode="0111"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_rscmi() { opcode="0111"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_rscpl() { opcode="0111"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_rscvs() { opcode="0111"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_rscvc() { opcode="0111"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_rschi() { opcode="0111"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_rscls() { opcode="0111"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_rscge() { opcode="0111"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_rsclt() { opcode="0111"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_rscgt() { opcode="0111"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_rscle() { opcode="0111"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_rscal() { opcode="0111"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_rscs() { opcode="0111"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_rsceqs() { opcode="0111"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_rscnes() { opcode="0111"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_rsccss() { opcode="0111"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_rscccs() { opcode="0111"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_rschss() { opcode="0111"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_rsclos() { opcode="0111"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_rscmis() { opcode="0111"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_rscpls() { opcode="0111"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_rscvss() { opcode="0111"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_rscvcs() { opcode="0111"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_rschis() { opcode="0111"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_rsclss() { opcode="0111"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_rscges() { opcode="0111"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_rsclts() { opcode="0111"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_rscgts() { opcode="0111"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_rscles() { opcode="0111"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_rscals() { opcode="0111"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_qsub() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_qdsub() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# parallel integer arithmetic
+instr_add16() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_add8() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_sub16() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_sub8() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_asx() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_sax() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_usad8() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_usada8() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# saturations
+instr_ssat() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_ssat16() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_usat() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+
+instr_usat16() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# multiplications
+instr_mul() { f_a="0"; f_s="0"; cond="$cond_al"; isa_instr_mul "$@"; }
+instr_muleq() { f_a="0"; f_s="0"; cond="$cond_eq"; isa_instr_mul "$@"; }
+instr_mulne() { f_a="0"; f_s="0"; cond="$cond_ne"; isa_instr_mul "$@"; }
+instr_mulcs() { f_a="0"; f_s="0"; cond="$cond_cs"; isa_instr_mul "$@"; }
+instr_mulcc() { f_a="0"; f_s="0"; cond="$cond_cc"; isa_instr_mul "$@"; }
+instr_mulhs() { f_a="0"; f_s="0"; cond="$cond_hs"; isa_instr_mul "$@"; }
+instr_mullo() { f_a="0"; f_s="0"; cond="$cond_lo"; isa_instr_mul "$@"; }
+instr_mulmi() { f_a="0"; f_s="0"; cond="$cond_mi"; isa_instr_mul "$@"; }
+instr_mulpl() { f_a="0"; f_s="0"; cond="$cond_pl"; isa_instr_mul "$@"; }
+instr_mulvs() { f_a="0"; f_s="0"; cond="$cond_vs"; isa_instr_mul "$@"; }
+instr_mulvc() { f_a="0"; f_s="0"; cond="$cond_vc"; isa_instr_mul "$@"; }
+instr_mulhi() { f_a="0"; f_s="0"; cond="$cond_hi"; isa_instr_mul "$@"; }
+instr_mulls() { f_a="0"; f_s="0"; cond="$cond_ls"; isa_instr_mul "$@"; }
+instr_mulge() { f_a="0"; f_s="0"; cond="$cond_ge"; isa_instr_mul "$@"; }
+instr_mullt() { f_a="0"; f_s="0"; cond="$cond_lt"; isa_instr_mul "$@"; }
+instr_mulgt() { f_a="0"; f_s="0"; cond="$cond_gt"; isa_instr_mul "$@"; }
+instr_mulle() { f_a="0"; f_s="0"; cond="$cond_le"; isa_instr_mul "$@"; }
+instr_mulal() { f_a="0"; f_s="0"; cond="$cond_al"; isa_instr_mul "$@"; }
+
+instr_muls() { f_a="0"; f_s="1"; cond="$cond_al"; isa_instr_mul "$@"; }
+instr_muleqs() { f_a="0"; f_s="1"; cond="$cond_eq"; isa_instr_mul "$@"; }
+instr_mulnes() { f_a="0"; f_s="1"; cond="$cond_ne"; isa_instr_mul "$@"; }
+instr_mulcss() { f_a="0"; f_s="1"; cond="$cond_cs"; isa_instr_mul "$@"; }
+instr_mulccs() { f_a="0"; f_s="1"; cond="$cond_cc"; isa_instr_mul "$@"; }
+instr_mulhss() { f_a="0"; f_s="1"; cond="$cond_hs"; isa_instr_mul "$@"; }
+instr_mullos() { f_a="0"; f_s="1"; cond="$cond_lo"; isa_instr_mul "$@"; }
+instr_mulmis() { f_a="0"; f_s="1"; cond="$cond_mi"; isa_instr_mul "$@"; }
+instr_mulpls() { f_a="0"; f_s="1"; cond="$cond_pl"; isa_instr_mul "$@"; }
+instr_mulvss() { f_a="0"; f_s="1"; cond="$cond_vs"; isa_instr_mul "$@"; }
+instr_mulvcs() { f_a="0"; f_s="1"; cond="$cond_vc"; isa_instr_mul "$@"; }
+instr_mulhis() { f_a="0"; f_s="1"; cond="$cond_hi"; isa_instr_mul "$@"; }
+instr_mullss() { f_a="0"; f_s="1"; cond="$cond_ls"; isa_instr_mul "$@"; }
+instr_mulges() { f_a="0"; f_s="1"; cond="$cond_ge"; isa_instr_mul "$@"; }
+instr_mullts() { f_a="0"; f_s="1"; cond="$cond_lt"; isa_instr_mul "$@"; }
+instr_mulgts() { f_a="0"; f_s="1"; cond="$cond_gt"; isa_instr_mul "$@"; }
+instr_mulles() { f_a="0"; f_s="1"; cond="$cond_le"; isa_instr_mul "$@"; }
+instr_mulals() { f_a="0"; f_s="1"; cond="$cond_al"; isa_instr_mul "$@"; }
+
+instr_mla() { f_a="1"; f_s="0"; cond="$cond_al"; isa_instr_mul "$@"; }
+instr_mlaeq() { f_a="1"; f_s="0"; cond="$cond_eq"; isa_instr_mul "$@"; }
+instr_mlane() { f_a="1"; f_s="0"; cond="$cond_ne"; isa_instr_mul "$@"; }
+instr_mlacs() { f_a="1"; f_s="0"; cond="$cond_cs"; isa_instr_mul "$@"; }
+instr_mlacc() { f_a="1"; f_s="0"; cond="$cond_cc"; isa_instr_mul "$@"; }
+instr_mlahs() { f_a="1"; f_s="0"; cond="$cond_hs"; isa_instr_mul "$@"; }
+instr_mlalo() { f_a="1"; f_s="0"; cond="$cond_lo"; isa_instr_mul "$@"; }
+instr_mlami() { f_a="1"; f_s="0"; cond="$cond_mi"; isa_instr_mul "$@"; }
+instr_mlapl() { f_a="1"; f_s="0"; cond="$cond_pl"; isa_instr_mul "$@"; }
+instr_mlavs() { f_a="1"; f_s="0"; cond="$cond_vs"; isa_instr_mul "$@"; }
+instr_mlavc() { f_a="1"; f_s="0"; cond="$cond_vc"; isa_instr_mul "$@"; }
+instr_mlahi() { f_a="1"; f_s="0"; cond="$cond_hi"; isa_instr_mul "$@"; }
+instr_mlals() { f_a="1"; f_s="0"; cond="$cond_ls"; isa_instr_mul "$@"; }
+instr_mlage() { f_a="1"; f_s="0"; cond="$cond_ge"; isa_instr_mul "$@"; }
+instr_mlalt() { f_a="1"; f_s="0"; cond="$cond_lt"; isa_instr_mul "$@"; }
+instr_mlagt() { f_a="1"; f_s="0"; cond="$cond_gt"; isa_instr_mul "$@"; }
+instr_mlale() { f_a="1"; f_s="0"; cond="$cond_le"; isa_instr_mul "$@"; }
+instr_mlaal() { f_a="1"; f_s="0"; cond="$cond_al"; isa_instr_mul "$@"; }
+
+instr_mlas() { f_a="1"; f_s="1"; cond="$cond_al"; isa_instr_mul "$@"; }
+instr_mlaeqs() { f_a="1"; f_s="1"; cond="$cond_eq"; isa_instr_mul "$@"; }
+instr_mlanes() { f_a="1"; f_s="1"; cond="$cond_ne"; isa_instr_mul "$@"; }
+instr_mlacss() { f_a="1"; f_s="1"; cond="$cond_cs"; isa_instr_mul "$@"; }
+instr_mlaccs() { f_a="1"; f_s="1"; cond="$cond_cc"; isa_instr_mul "$@"; }
+instr_mlahss() { f_a="1"; f_s="1"; cond="$cond_hs"; isa_instr_mul "$@"; }
+instr_mlalos() { f_a="1"; f_s="1"; cond="$cond_lo"; isa_instr_mul "$@"; }
+instr_mlamis() { f_a="1"; f_s="1"; cond="$cond_mi"; isa_instr_mul "$@"; }
+instr_mlapls() { f_a="1"; f_s="1"; cond="$cond_pl"; isa_instr_mul "$@"; }
+instr_mlavss() { f_a="1"; f_s="1"; cond="$cond_vs"; isa_instr_mul "$@"; }
+instr_mlavcs() { f_a="1"; f_s="1"; cond="$cond_vc"; isa_instr_mul "$@"; }
+instr_mlahis() { f_a="1"; f_s="1"; cond="$cond_hi"; isa_instr_mul "$@"; }
+instr_mlalss() { f_a="1"; f_s="1"; cond="$cond_ls"; isa_instr_mul "$@"; }
+instr_mlages() { f_a="1"; f_s="1"; cond="$cond_ge"; isa_instr_mul "$@"; }
+instr_mlalts() { f_a="1"; f_s="1"; cond="$cond_lt"; isa_instr_mul "$@"; }
+instr_mlagts() { f_a="1"; f_s="1"; cond="$cond_gt"; isa_instr_mul "$@"; }
+instr_mlales() { f_a="1"; f_s="1"; cond="$cond_le"; isa_instr_mul "$@"; }
+instr_mlaals() { f_a="1"; f_s="1"; cond="$cond_al"; isa_instr_mul "$@"; }
+
+instr_umull() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011011b")))
+}
+
+instr_umulls() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011011b")))
+}
+
+instr_umlal() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011011b")))
+}
+
+instr_umlals() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011011b")))
+}
+
+instr_umaal() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011011b")))
+}
+
+instr_smull() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $1 zero zero)011001b")))
+}
+
+instr_smulls() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $1 zero zero)011001b")))
+}
+
+instr_smlal() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlals() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smulxy() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $1 zero zero)011001b")))
+}
+
+instr_smulwy() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $1 zero zero)011001b")))
+}
+
+instr_smlaxy() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlawy() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlalxy() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smuad() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smuadx() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlad() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smladx() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlald() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlaldx() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smusd() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smusdx() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlsd() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlsdx() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlsld() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smlsldx() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smmul() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smmulr() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smmla() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smmlar() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smmls() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+
+instr_smmlsr() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)011010b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# move
+instr_mov() { opcode="1101"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_moveq() { opcode="1101"; f_s="0"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_movne() { opcode="1101"; f_s="0"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_movcs() { opcode="1101"; f_s="0"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_movcc() { opcode="1101"; f_s="0"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_movhs() { opcode="1101"; f_s="0"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_movlo() { opcode="1101"; f_s="0"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_movmi() { opcode="1101"; f_s="0"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_movpl() { opcode="1101"; f_s="0"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_movvs() { opcode="1101"; f_s="0"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_movvc() { opcode="1101"; f_s="0"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_movhi() { opcode="1101"; f_s="0"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_movls() { opcode="1101"; f_s="0"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_movge() { opcode="1101"; f_s="0"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_movlt() { opcode="1101"; f_s="0"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_movgt() { opcode="1101"; f_s="0"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_movle() { opcode="1101"; f_s="0"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_moval() { opcode="1101"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_movs() { opcode="1101"; f_s="1"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_moveqs() { opcode="1101"; f_s="1"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_movnes() { opcode="1101"; f_s="1"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_movcss() { opcode="1101"; f_s="1"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_movccs() { opcode="1101"; f_s="1"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_movhss() { opcode="1101"; f_s="1"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_movlos() { opcode="1101"; f_s="1"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_movmis() { opcode="1101"; f_s="1"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_movpls() { opcode="1101"; f_s="1"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_movvss() { opcode="1101"; f_s="1"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_movvcs() { opcode="1101"; f_s="1"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_movhis() { opcode="1101"; f_s="1"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_movlss() { opcode="1101"; f_s="1"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_movges() { opcode="1101"; f_s="1"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_movlts() { opcode="1101"; f_s="1"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_movgts() { opcode="1101"; f_s="1"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_movles() { opcode="1101"; f_s="1"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_movals() { opcode="1101"; f_s="1"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_mvn() { opcode="1111"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_mvneq() { opcode="1111"; f_s="0"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_mvnne() { opcode="1111"; f_s="0"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_mvncs() { opcode="1111"; f_s="0"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_mvncc() { opcode="1111"; f_s="0"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_mvnhs() { opcode="1111"; f_s="0"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_mvnlo() { opcode="1111"; f_s="0"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_mvnmi() { opcode="1111"; f_s="0"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_mvnpl() { opcode="1111"; f_s="0"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_mvnvs() { opcode="1111"; f_s="0"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_mvnvc() { opcode="1111"; f_s="0"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_mvnhi() { opcode="1111"; f_s="0"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_mvnls() { opcode="1111"; f_s="0"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_mvnge() { opcode="1111"; f_s="0"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_mvnlt() { opcode="1111"; f_s="0"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_mvngt() { opcode="1111"; f_s="0"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_mvnle() { opcode="1111"; f_s="0"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_mvnal() { opcode="1111"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_mvns() { opcode="1111"; f_s="1"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_mvneqs() { opcode="1111"; f_s="1"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_mvnnes() { opcode="1111"; f_s="1"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_mvncss() { opcode="1111"; f_s="1"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_mvnccs() { opcode="1111"; f_s="1"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_mvnhss() { opcode="1111"; f_s="1"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_mvnlos() { opcode="1111"; f_s="1"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_mvnmis() { opcode="1111"; f_s="1"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_mvnpls() { opcode="1111"; f_s="1"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_mvnvss() { opcode="1111"; f_s="1"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_mvnvcs() { opcode="1111"; f_s="1"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_mvnhis() { opcode="1111"; f_s="1"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_mvnlss() { opcode="1111"; f_s="1"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_mvnges() { opcode="1111"; f_s="1"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_mvnlts() { opcode="1111"; f_s="1"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_mvngts() { opcode="1111"; f_s="1"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_mvnles() { opcode="1111"; f_s="1"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_mvnals() { opcode="1111"; f_s="1"; cond="$cond_al"; isa_instr2 "$@"; }
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# shifts
+instr_asr() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_asrs() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_lsl() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_lsls() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_lsr() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_lsrs() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_ror() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_rors() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_rrx() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+
+instr_rrxs() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "0000000000000000$(get_reg $1)00000010010b"))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# binary logic
+instr_clz() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)100100b")))
+}
+
+instr_cmp() { opcode="1010"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_cmpeq() { opcode="1010"; f_s="0"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_cmpne() { opcode="1010"; f_s="0"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_cmpcs() { opcode="1010"; f_s="0"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_cmpcc() { opcode="1010"; f_s="0"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_cmphs() { opcode="1010"; f_s="0"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_cmplo() { opcode="1010"; f_s="0"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_cmpmi() { opcode="1010"; f_s="0"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_cmppl() { opcode="1010"; f_s="0"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_cmpvs() { opcode="1010"; f_s="0"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_cmpvc() { opcode="1010"; f_s="0"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_cmphi() { opcode="1010"; f_s="0"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_cmpls() { opcode="1010"; f_s="0"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_cmpge() { opcode="1010"; f_s="0"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_cmplt() { opcode="1010"; f_s="0"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_cmpgt() { opcode="1010"; f_s="0"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_cmple() { opcode="1010"; f_s="0"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_cmpal() { opcode="1010"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_cmn() { opcode="1011"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_cmneq() { opcode="1011"; f_s="0"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_cmnne() { opcode="1011"; f_s="0"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_cmncs() { opcode="1011"; f_s="0"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_cmncc() { opcode="1011"; f_s="0"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_cmnhs() { opcode="1011"; f_s="0"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_cmnlo() { opcode="1011"; f_s="0"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_cmnmi() { opcode="1011"; f_s="0"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_cmnpl() { opcode="1011"; f_s="0"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_cmnvs() { opcode="1011"; f_s="0"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_cmnvc() { opcode="1011"; f_s="0"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_cmnhi() { opcode="1011"; f_s="0"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_cmnls() { opcode="1011"; f_s="0"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_cmnge() { opcode="1011"; f_s="0"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_cmnlt() { opcode="1011"; f_s="0"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_cmngt() { opcode="1011"; f_s="0"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_cmnle() { opcode="1011"; f_s="0"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_cmnal() { opcode="1011"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_tst() { opcode="1000"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_tsteq() { opcode="1000"; f_s="0"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_tstne() { opcode="1000"; f_s="0"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_tstcs() { opcode="1000"; f_s="0"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_tstcc() { opcode="1000"; f_s="0"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_tsths() { opcode="1000"; f_s="0"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_tstlo() { opcode="1000"; f_s="0"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_tstmi() { opcode="1000"; f_s="0"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_tstpl() { opcode="1000"; f_s="0"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_tstvs() { opcode="1000"; f_s="0"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_tstvc() { opcode="1000"; f_s="0"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_tsthi() { opcode="1000"; f_s="0"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_tstls() { opcode="1000"; f_s="0"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_tstge() { opcode="1000"; f_s="0"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_tstlt() { opcode="1000"; f_s="0"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_tstgt() { opcode="1000"; f_s="0"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_tstle() { opcode="1000"; f_s="0"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_tstal() { opcode="1000"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_teq() { opcode="1001"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+instr_teqeq() { opcode="1001"; f_s="0"; cond="$cond_eq"; isa_instr2 "$@"; }
+instr_teqne() { opcode="1001"; f_s="0"; cond="$cond_ne"; isa_instr2 "$@"; }
+instr_teqcs() { opcode="1001"; f_s="0"; cond="$cond_cs"; isa_instr2 "$@"; }
+instr_teqcc() { opcode="1001"; f_s="0"; cond="$cond_cc"; isa_instr2 "$@"; }
+instr_teqhs() { opcode="1001"; f_s="0"; cond="$cond_hs"; isa_instr2 "$@"; }
+instr_teqlo() { opcode="1001"; f_s="0"; cond="$cond_lo"; isa_instr2 "$@"; }
+instr_teqmi() { opcode="1001"; f_s="0"; cond="$cond_mi"; isa_instr2 "$@"; }
+instr_teqpl() { opcode="1001"; f_s="0"; cond="$cond_pl"; isa_instr2 "$@"; }
+instr_teqvs() { opcode="1001"; f_s="0"; cond="$cond_vs"; isa_instr2 "$@"; }
+instr_teqvc() { opcode="1001"; f_s="0"; cond="$cond_vc"; isa_instr2 "$@"; }
+instr_teqhi() { opcode="1001"; f_s="0"; cond="$cond_hi"; isa_instr2 "$@"; }
+instr_teqls() { opcode="1001"; f_s="0"; cond="$cond_ls"; isa_instr2 "$@"; }
+instr_teqge() { opcode="1001"; f_s="0"; cond="$cond_ge"; isa_instr2 "$@"; }
+instr_teqlt() { opcode="1001"; f_s="0"; cond="$cond_lt"; isa_instr2 "$@"; }
+instr_teqgt() { opcode="1001"; f_s="0"; cond="$cond_gt"; isa_instr2 "$@"; }
+instr_teqle() { opcode="1001"; f_s="0"; cond="$cond_le"; isa_instr2 "$@"; }
+instr_teqal() { opcode="1001"; f_s="0"; cond="$cond_al"; isa_instr2 "$@"; }
+
+instr_and() { opcode="0000"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_andeq() { opcode="0000"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_andne() { opcode="0000"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_andcs() { opcode="0000"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_andcc() { opcode="0000"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_andhs() { opcode="0000"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_andlo() { opcode="0000"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_andmi() { opcode="0000"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_andpl() { opcode="0000"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_andvs() { opcode="0000"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_andvc() { opcode="0000"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_andhi() { opcode="0000"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_andls() { opcode="0000"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_andge() { opcode="0000"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_andlt() { opcode="0000"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_andgt() { opcode="0000"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_andle() { opcode="0000"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_andal() { opcode="0000"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_ands() { opcode="0000"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_andeqs() { opcode="0000"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_andnes() { opcode="0000"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_andcss() { opcode="0000"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_andccs() { opcode="0000"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_andhss() { opcode="0000"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_andlos() { opcode="0000"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_andmis() { opcode="0000"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_andpls() { opcode="0000"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_andvss() { opcode="0000"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_andvcs() { opcode="0000"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_andhis() { opcode="0000"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_andlss() { opcode="0000"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_andges() { opcode="0000"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_andlts() { opcode="0000"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_andgts() { opcode="0000"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_andles() { opcode="0000"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_andals() { opcode="0000"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_eor() { opcode="0001"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_eoreq() { opcode="0001"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_eorne() { opcode="0001"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_eorcs() { opcode="0001"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_eorcc() { opcode="0001"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_eorhs() { opcode="0001"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_eorlo() { opcode="0001"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_eormi() { opcode="0001"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_eorpl() { opcode="0001"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_eorvs() { opcode="0001"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_eorvc() { opcode="0001"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_eorhi() { opcode="0001"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_eorls() { opcode="0001"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_eorge() { opcode="0001"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_eorlt() { opcode="0001"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_eorgt() { opcode="0001"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_eorle() { opcode="0001"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_eoral() { opcode="0001"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_eors() { opcode="0001"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_eoreqs() { opcode="0001"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_eornes() { opcode="0001"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_eorcss() { opcode="0001"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_eorccs() { opcode="0001"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_eorhss() { opcode="0001"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_eorlos() { opcode="0001"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_eormis() { opcode="0001"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_eorpls() { opcode="0001"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_eorvss() { opcode="0001"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_eorvcs() { opcode="0001"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_eorhis() { opcode="0001"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_eorlss() { opcode="0001"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_eorges() { opcode="0001"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_eorlts() { opcode="0001"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_eorgts() { opcode="0001"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_eorles() { opcode="0001"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_eorals() { opcode="0001"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_orr() { opcode="1100"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_orreq() { opcode="1100"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_orrne() { opcode="1100"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_orrcs() { opcode="1100"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_orrcc() { opcode="1100"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_orrhs() { opcode="1100"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_orrlo() { opcode="1100"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_orrmi() { opcode="1100"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_orrpl() { opcode="1100"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_orrvs() { opcode="1100"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_orrvc() { opcode="1100"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_orrhi() { opcode="1100"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_orrls() { opcode="1100"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_orrge() { opcode="1100"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_orrlt() { opcode="1100"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_orrgt() { opcode="1100"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_orrle() { opcode="1100"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_orral() { opcode="1100"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_orrs() { opcode="1100"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_orreqs() { opcode="1100"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_orrnes() { opcode="1100"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_orrcss() { opcode="1100"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_orrccs() { opcode="1100"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_orrhss() { opcode="1100"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_orrlos() { opcode="1100"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_orrmis() { opcode="1100"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_orrpls() { opcode="1100"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_orrvss() { opcode="1100"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_orrvcs() { opcode="1100"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_orrhis() { opcode="1100"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_orrlss() { opcode="1100"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_orrges() { opcode="1100"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_orrlts() { opcode="1100"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_orrgts() { opcode="1100"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_orrles() { opcode="1100"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_orrals() { opcode="1100"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_orn() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "001101$(get_reg $2 $1)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_orns() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "001101$(get_reg $2 $1)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_bic() { opcode="1110"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_biceq() { opcode="1110"; f_s="0"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_bicne() { opcode="1110"; f_s="0"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_biccs() { opcode="1110"; f_s="0"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_biccc() { opcode="1110"; f_s="0"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_bichs() { opcode="1110"; f_s="0"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_biclo() { opcode="1110"; f_s="0"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_bicmi() { opcode="1110"; f_s="0"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_bicpl() { opcode="1110"; f_s="0"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_bicvs() { opcode="1110"; f_s="0"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_bicvc() { opcode="1110"; f_s="0"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_bichi() { opcode="1110"; f_s="0"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_bicls() { opcode="1110"; f_s="0"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_bicge() { opcode="1110"; f_s="0"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_biclt() { opcode="1110"; f_s="0"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_bicgt() { opcode="1110"; f_s="0"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_bicle() { opcode="1110"; f_s="0"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_bical() { opcode="1110"; f_s="0"; cond="$cond_al"; isa_instr3 "$@"; }
+
+instr_bics() { opcode="1110"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+instr_biceqs() { opcode="1110"; f_s="1"; cond="$cond_eq"; isa_instr3 "$@"; }
+instr_bicnes() { opcode="1110"; f_s="1"; cond="$cond_ne"; isa_instr3 "$@"; }
+instr_biccss() { opcode="1110"; f_s="1"; cond="$cond_cs"; isa_instr3 "$@"; }
+instr_bicccs() { opcode="1110"; f_s="1"; cond="$cond_cc"; isa_instr3 "$@"; }
+instr_bichss() { opcode="1110"; f_s="1"; cond="$cond_hs"; isa_instr3 "$@"; }
+instr_biclos() { opcode="1110"; f_s="1"; cond="$cond_lo"; isa_instr3 "$@"; }
+instr_bicmis() { opcode="1110"; f_s="1"; cond="$cond_mi"; isa_instr3 "$@"; }
+instr_bicpls() { opcode="1110"; f_s="1"; cond="$cond_pl"; isa_instr3 "$@"; }
+instr_bicvss() { opcode="1110"; f_s="1"; cond="$cond_vs"; isa_instr3 "$@"; }
+instr_bicvcs() { opcode="1110"; f_s="1"; cond="$cond_vc"; isa_instr3 "$@"; }
+instr_bichis() { opcode="1110"; f_s="1"; cond="$cond_hi"; isa_instr3 "$@"; }
+instr_biclss() { opcode="1110"; f_s="1"; cond="$cond_ls"; isa_instr3 "$@"; }
+instr_bicges() { opcode="1110"; f_s="1"; cond="$cond_ge"; isa_instr3 "$@"; }
+instr_biclts() { opcode="1110"; f_s="1"; cond="$cond_lt"; isa_instr3 "$@"; }
+instr_bicgts() { opcode="1110"; f_s="1"; cond="$cond_gt"; isa_instr3 "$@"; }
+instr_bicles() { opcode="1110"; f_s="1"; cond="$cond_le"; isa_instr3 "$@"; }
+instr_bicals() { opcode="1110"; f_s="1"; cond="$cond_al"; isa_instr3 "$@"; }
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# packing
+instr_pkhbt() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_pkhtb() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# sign extend
+instr_sxth() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_sxtb16() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_sxtb() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_uxth() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_uxtb16() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_uxtb() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_sxtah() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_sxtab16() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_sxtab() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_uxtah() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_uxtab16() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_uxtab() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# reversals
+instr_rev() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_rev16() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+
+instr_revsh() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# select
+instr_sel() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "011100$(get_reg $2 $1 $1 zero)100001b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# branches
+instr_b() { f_l="0"; cond="$cond_al"; isa_branch "$@"; }
+instr_beq() { f_l="0"; cond="$cond_eq"; isa_branch "$@"; }
+instr_bne() { f_l="0"; cond="$cond_ne"; isa_branch "$@"; }
+instr_bcs() { f_l="0"; cond="$cond_cs"; isa_branch "$@"; }
+instr_bcc() { f_l="0"; cond="$cond_cc"; isa_branch "$@"; }
+instr_bhs() { f_l="0"; cond="$cond_hs"; isa_branch "$@"; }
+instr_blo() { f_l="0"; cond="$cond_lo"; isa_branch "$@"; }
+instr_bmi() { f_l="0"; cond="$cond_mi"; isa_branch "$@"; }
+instr_bpl() { f_l="0"; cond="$cond_pl"; isa_branch "$@"; }
+instr_bvs() { f_l="0"; cond="$cond_vs"; isa_branch "$@"; }
+instr_bvc() { f_l="0"; cond="$cond_vc"; isa_branch "$@"; }
+instr_bhi() { f_l="0"; cond="$cond_hi"; isa_branch "$@"; }
+instr_bls() { f_l="0"; cond="$cond_ls"; isa_branch "$@"; }
+instr_bge() { f_l="0"; cond="$cond_ge"; isa_branch "$@"; }
+instr_blt() { f_l="0"; cond="$cond_lt"; isa_branch "$@"; }
+instr_bgt() { f_l="0"; cond="$cond_gt"; isa_branch "$@"; }
+instr_ble() { f_l="0"; cond="$cond_le"; isa_branch "$@"; }
+instr_bal() { f_l="0"; cond="$cond_al"; isa_branch "$@"; }
+
+instr_bl() { f_l="1"; cond="$cond_al"; isa_branch "$@"; }
+instr_bleq() { f_l="1"; cond="$cond_eq"; isa_branch "$@"; }
+instr_blne() { f_l="1"; cond="$cond_ne"; isa_branch "$@"; }
+instr_blcs() { f_l="1"; cond="$cond_cs"; isa_branch "$@"; }
+instr_blcc() { f_l="1"; cond="$cond_cc"; isa_branch "$@"; }
+instr_blhs() { f_l="1"; cond="$cond_hs"; isa_branch "$@"; }
+instr_bllo() { f_l="1"; cond="$cond_lo"; isa_branch "$@"; }
+instr_blmi() { f_l="1"; cond="$cond_mi"; isa_branch "$@"; }
+instr_blpl() { f_l="1"; cond="$cond_pl"; isa_branch "$@"; }
+instr_blvs() { f_l="1"; cond="$cond_vs"; isa_branch "$@"; }
+instr_blvc() { f_l="1"; cond="$cond_vc"; isa_branch "$@"; }
+instr_blhi() { f_l="1"; cond="$cond_hi"; isa_branch "$@"; }
+instr_blls() { f_l="1"; cond="$cond_ls"; isa_branch "$@"; }
+instr_blge() { f_l="1"; cond="$cond_ge"; isa_branch "$@"; }
+instr_bllt() { f_l="1"; cond="$cond_lt"; isa_branch "$@"; }
+instr_blgt() { f_l="1"; cond="$cond_gt"; isa_branch "$@"; }
+instr_blle() { f_l="1"; cond="$cond_le"; isa_branch "$@"; }
+instr_blal() { f_l="1"; cond="$cond_al"; isa_branch "$@"; }
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# PSR operations
+instr_mrs() {
+	args 2 || return 1
+	case "$2" in
+		"cpsr") sas_asm=0 ;;
+		"spsr") sas_asm=4 ;;
+		*) return 1 ;;
+	esac
+	check_type "$1" "$reg" || return 1
+	assemble $(tobytes ${cond:-$cond_al}1${sas_asm}f$(get_reg $1)000)
+	cond=""
+}
+instr_mrseq() { cond="$cond_eq"; instr_mrs "$@"; }
+instr_mrsne() { cond="$cond_ne"; instr_mrs "$@"; }
+instr_mrscs() { cond="$cond_cs"; instr_mrs "$@"; }
+instr_mrscc() { cond="$cond_cc"; instr_mrs "$@"; }
+instr_mrshs() { cond="$cond_hs"; instr_mrs "$@"; }
+instr_mrslo() { cond="$cond_lo"; instr_mrs "$@"; }
+instr_mrsmi() { cond="$cond_mi"; instr_mrs "$@"; }
+instr_mrspl() { cond="$cond_pl"; instr_mrs "$@"; }
+instr_mrsvs() { cond="$cond_vs"; instr_mrs "$@"; }
+instr_mrsvc() { cond="$cond_vc"; instr_mrs "$@"; }
+instr_mrshi() { cond="$cond_hi"; instr_mrs "$@"; }
+instr_mrsls() { cond="$cond_ls"; instr_mrs "$@"; }
+instr_mrsge() { cond="$cond_ge"; instr_mrs "$@"; }
+instr_mrslt() { cond="$cond_lt"; instr_mrs "$@"; }
+instr_mrsgt() { cond="$cond_gt"; instr_mrs "$@"; }
+instr_mrsle() { cond="$cond_le"; instr_mrs "$@"; }
+instr_mrsal() { cond="$cond_al"; instr_mrs "$@"; }
+
+instr_msr() {
+	args 2 || return 1
+	case "$1" in
+		"cpsr") sas_asm=2 ;;
+		"spsr") sas_asm=6 ;;
+		*) return 1 ;;
+	esac
+	check_type "$2" "$reg" || return 1
+	assemble $(tobytes ${cond:-$cond_al}1${sas_asm}9f00$(get_reg $2))
+	cond=""
+}
+instr_msreq() { cond="$cond_eq"; instr_msr "$@"; }
+instr_msrne() { cond="$cond_ne"; instr_msr "$@"; }
+instr_msrcs() { cond="$cond_cs"; instr_msr "$@"; }
+instr_msrcc() { cond="$cond_cc"; instr_msr "$@"; }
+instr_msrhs() { cond="$cond_hs"; instr_msr "$@"; }
+instr_msrlo() { cond="$cond_lo"; instr_msr "$@"; }
+instr_msrmi() { cond="$cond_mi"; instr_msr "$@"; }
+instr_msrpl() { cond="$cond_pl"; instr_msr "$@"; }
+instr_msrvs() { cond="$cond_vs"; instr_msr "$@"; }
+instr_msrvc() { cond="$cond_vc"; instr_msr "$@"; }
+instr_msrhi() { cond="$cond_hi"; instr_msr "$@"; }
+instr_msrls() { cond="$cond_ls"; instr_msr "$@"; }
+instr_msrge() { cond="$cond_ge"; instr_msr "$@"; }
+instr_msrlt() { cond="$cond_lt"; instr_msr "$@"; }
+instr_msrgt() { cond="$cond_gt"; instr_msr "$@"; }
+instr_msrle() { cond="$cond_le"; instr_msr "$@"; }
+instr_msral() { cond="$cond_al"; instr_msr "$@"; }
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# Processor state changes
+instr_cpsid() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000100$(get_reg $1 $2)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_cpsie() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000100$(get_reg $1 $2)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_cps() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000100$(get_reg $1 $2)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_setend() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000100$(get_reg $1 $2)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# load/store
+instr_ldr() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrb() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrsb() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrh() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrsh() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrd() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrt() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrbt() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrsbt() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrht() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_ldrsht() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "100000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_str() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strb() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strh() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strd() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strt() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strbt() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strht() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_strdt() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101000$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# preload data or instruction
+instr_pld() {
+	args 0 || return 1
+	#assemble $(tobytes $(tohex "00000000000000000000000000001100b")))
+}
+
+instr_pli() {
+	args 1 || return 1
+	#assemble $(tobytes $(tohex "000010$(tobin $(pad 4 $(num $1)))"))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# misc. memory operations
+instr_ldm() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_ldmia() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_ldmib() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_ldmda() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_ldmdb() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_pop() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "001010$(get_reg $2 $1)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_ldrex() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_ldrexb() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_ldrexh() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_ldrexd() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_stm() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_stmia() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_stmib() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_stmda() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_stmdb() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101010b")))
+}
+
+instr_push() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "001010$(get_reg $2 $1)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+
+instr_strex() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_strexb() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_strexh() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_strexd() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $2 $3 $1 zero)101011b")))
+}
+
+instr_clrex() {
+	args 3 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "001011$(get_reg $2 $1)$(pad 4 $(tobin $(tohex $3)))b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# swap operations
+instr_swp() {
+	args 2 || return 1
+	#sas_asm="${2#*(}"
+	#sas_asm="${sas_asm%)}"
+	#assemble $(tobytes $(pad 4 $(tohex "101111$(get_reg $sas_asm $1)$(pad 4 $(tobin $(tohex ${2%(*})))b")))
+}
+
+instr_swpb() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011111b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# return state
+instr_srs() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_srsia() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_srsib() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_srsda() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_srsdb() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_rfe() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_rfeia() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_rfeib() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_rfeda() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+
+instr_rfedb() {
+	args 0 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000010000000000000000000011000b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
+#<<<<<<<<<<<<<<<<<<<<<<<<<
+# debugging
+instr_bkpt() {
+	args 0 || args 1 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000001011$(get_reg ${1:-zero})0110000000000000")))
+}
+
+instr_smc() {
+	args 0 || args 1 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "01000001011$(get_reg ${1:-zero})0110000000100000")))
+}
+
+instr_dbg() {
+	args 1 || return 1
+	#sas_asm="${1#*}"
+	#sas_asm="${sas_asm%}"
+	#assemble $(tobytes $(pad 4 $(tohex "000001$(get_reg $sas_asm)11111$(pad 4 $(tobin $(tohex ${1})))b")))
+}
+
+instr_dmb() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)110100b")))
+}
+
+instr_dsb() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000001$(get_reg $1)01100$(tobin $(tohex $2))b")))
+}
+
+instr_isb() {
+	args 2 || return 1
+	#assemble $(tobytes $(pad 4 $(tohex "000000$(get_reg $1 $2 zero zero)110000b")))
+}
+#>>>>>>>>>>>>>>>>>>>>>>>>>
+
